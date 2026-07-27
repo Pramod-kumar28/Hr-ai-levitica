@@ -1962,6 +1962,162 @@ export const payrollReportsAPI = {
 };
 
 // ==========================================
+// ATTENDANCE-PAYROLL INTEGRATION APIs
+// Backend: routers/Payroll/payroll_integration.py, mounted at /api/payroll
+// (router prefix "/integration" -> /api/payroll/integration/*)
+//
+// NOTE: /calculation and /calculation/run-payroll are real endpoints but
+// have no computation engine behind them yet — present_days/basic_salary/
+// net_pay etc. come back as 0/"Pending" for every employee regardless of
+// actual attendance. Freeze/unfreeze, corrections, rules, and settings ARE
+// fully implemented.
+// ==========================================
+const _monthYearQuery = (month, year) => {
+  const now = new Date();
+  const m = month || now.getMonth() + 1;
+  const y = year || now.getFullYear();
+  return new URLSearchParams({ month: m, year: y }).toString();
+};
+
+export const payrollIntegrationAPI = {
+  // ---- Freeze / Unfreeze ----
+  getFreezeStatus: (month, year) =>
+    apiCall(`/api/payroll/integration/freeze-status?${_monthYearQuery(month, year)}`),
+
+  freezeForPayroll: (requestedBy = 'Payroll Admin', month, year) =>
+    apiCall(`/api/payroll/integration/freeze?${_monthYearQuery(month, year)}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requested_by: requestedBy })
+    }),
+
+  unfreeze: (requestedBy, month, year) =>
+    apiCall(`/api/payroll/integration/unfreeze?${_monthYearQuery(month, year)}`, {
+      method: 'POST'
+    }),
+
+  // ---- Calculation ----
+  getCalculation: (params = {}) => {
+    const q = new URLSearchParams();
+    if (params.department) q.append('department', params.department);
+    if (params.location) q.append('location', params.location);
+    const qs = q.toString();
+    return apiCall(`/api/payroll/integration/calculation${qs ? `?${qs}` : ''}`);
+  },
+
+  runPayroll: (month, year, department, location) =>
+    apiCall('/api/payroll/integration/calculation/run-payroll', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        month,
+        year,
+        ...(department && { department }),
+        ...(location && { location })
+      })
+    }),
+
+  exportCalculationCsv: (params = {}) => {
+    const q = new URLSearchParams();
+    if (params.department) q.append('department', params.department);
+    if (params.location) q.append('location', params.location);
+    const qs = q.toString();
+    return apiCall(`/api/payroll/integration/calculation/export${qs ? `?${qs}` : ''}`);
+  },
+
+  // ---- Integration status / data flow ----
+  getIntegrationStatus: () => apiCall('/api/payroll/integration/status'),
+  refreshStatus: () => apiCall('/api/payroll/integration/refresh-status', { method: 'POST' }),
+  getRealtimeDataFlow: () => apiCall('/api/payroll/integration/realtime-data-flow'),
+  syncNow: (source) =>
+    apiCall('/api/payroll/integration/sync-now', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(source ? { source } : {})
+    }),
+  refreshFlowStatus: () => apiCall('/api/payroll/integration/refresh-flow', { method: 'POST' }),
+
+  // ---- Calculation rules ----
+  listCalculationRules: () => apiCall('/api/payroll/integration/calculation-rules'),
+  updateCalculationRule: (ruleId, data) =>
+    apiCall(`/api/payroll/integration/calculation-rules/${ruleId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    }),
+  toggleCalculationRule: (ruleId) =>
+    apiCall(`/api/payroll/integration/calculation-rules/${ruleId}/toggle`, { method: 'POST' }),
+
+  // ---- Action items ----
+  listActionItems: (activeOnly = true) =>
+    apiCall(`/api/payroll/integration/action-items?active_only=${activeOnly}`),
+  resolveActionItem: (itemId, resolvedBy) =>
+    apiCall(`/api/payroll/integration/action-items/${itemId}/resolve`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(resolvedBy ? { resolved_by: resolvedBy } : {})
+    }),
+  resolveAllActionItems: () =>
+    apiCall('/api/payroll/integration/action-items/resolve-all', { method: 'POST' }),
+
+  // ---- Corrections ----
+  listCorrections: (status) =>
+    apiCall(`/api/payroll/integration/corrections${status ? `?status=${status}` : ''}`),
+  createCorrection: (data) =>
+    apiCall('/api/payroll/integration/corrections', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    }),
+  updateCorrection: (correctionId, data) =>
+    apiCall(`/api/payroll/integration/corrections/${correctionId}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    }),
+  approveCorrection: (correctionId, reviewedBy = 'Payroll Admin') =>
+    apiCall(`/api/payroll/integration/corrections/${correctionId}/approve?reviewed_by=${encodeURIComponent(reviewedBy)}`, {
+      method: 'POST'
+    }),
+  rejectCorrection: (correctionId, reviewedBy = 'Payroll Admin') =>
+    apiCall(`/api/payroll/integration/corrections/${correctionId}/reject?reviewed_by=${encodeURIComponent(reviewedBy)}`, {
+      method: 'POST'
+    }),
+  exportCorrectionsCsv: () => apiCall('/api/payroll/integration/corrections/export'),
+
+  // ---- Reports ----
+  listReports: () => apiCall('/api/payroll/integration/reports'),
+  generateReport: (reportKey) =>
+    apiCall(`/api/payroll/integration/reports/${reportKey}/generate`, { method: 'POST' }),
+  exportAllReportsCsv: () => apiCall('/api/payroll/integration/reports/export-all'),
+
+  // ---- Settings ----
+  getSettings: () => apiCall('/api/payroll/integration/settings'),
+  updateSettings: (data) =>
+    apiCall('/api/payroll/integration/settings', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    }),
+  resetSettings: () => apiCall('/api/payroll/integration/settings/reset', { method: 'POST' }),
+
+  // ---- Dashboard ----
+  getDashboardSummary: (params = {}) => {
+    const q = new URLSearchParams();
+    if (params.month) q.append('month', params.month);
+    if (params.year) q.append('year', params.year);
+    if (params.department) q.append('department', params.department);
+    if (params.location) q.append('location', params.location);
+    if (params.status) q.append('status', params.status);
+    const qs = q.toString();
+    return apiCall(`/api/payroll/integration/dashboard/summary${qs ? `?${qs}` : ''}`);
+  },
+  getProcessingStatus: () => apiCall('/api/payroll/integration/dashboard/processing-status'),
+  getImpactAnalysis: () => apiCall('/api/payroll/integration/dashboard/impact-analysis'),
+  getTopDeductionsAdditions: () => apiCall('/api/payroll/integration/dashboard/top-deductions-additions'),
+};
+
+// ==========================================
 // HR OPERATIONS APIs
 // ==========================================
 export const hrOpsAPI = {
