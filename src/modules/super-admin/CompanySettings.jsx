@@ -232,6 +232,7 @@ const fromBackendLocation = (l) => ({
   workingHours: { start: l.working_hours_start || '09:00', end: l.working_hours_end || '18:00' },
   isDefault: !!l.is_default,
   status: l.is_active ? 'active' : 'inactive',
+  employeeCount: l.employee_count || 0,
 });
 
 const toBackendLocation = (loc) => ({
@@ -543,6 +544,8 @@ const CompanySettings = () => {
   // ---------------- UI STATES ----------------
   const [showLogoUpload, setShowLogoUpload] = useState(false);
   const [showAddLocation, setShowAddLocation] = useState(false);
+  const [showEditLocation, setShowEditLocation] = useState(false);
+  const [editingLocationId, setEditingLocationId] = useState(null);
   const [showAddExchangeRate, setShowAddExchangeRate] = useState(false);
   const [showAddPolicy, setShowAddPolicy] = useState(false);
   const [showDataPrivacyModal, setShowDataPrivacyModal] = useState(false);
@@ -834,6 +837,46 @@ const CompanySettings = () => {
       });
     } catch (err) {
       alert(`Failed to add location: ${err.message}`);
+    }
+  };
+
+  const handleOpenEditLocation = (location) => {
+    setEditingLocationId(location.id);
+    setNewLocation({
+      name: location.name,
+      address: location.address,
+      timezone: location.timezone,
+      weekendDays: location.weekendDays,
+      workingHours: { ...location.workingHours },
+    });
+    setShowEditLocation(true);
+  };
+
+  const handleUpdateLocation = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await fetch(`${BASE_URL}/company-settings/locations/${editingLocationId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', ...authHeader() },
+        body: JSON.stringify(toBackendLocation({ ...newLocation, isDefault: false, status: 'active' })),
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.detail || 'Failed to update location');
+      }
+      const updated = await res.json();
+      setLocations(locations.map(loc => (loc.id === editingLocationId ? fromBackendLocation(updated) : loc)));
+      setShowEditLocation(false);
+      setEditingLocationId(null);
+      setNewLocation({
+        name: '',
+        address: '',
+        timezone: '',
+        weekendDays: ['Saturday', 'Sunday'],
+        workingHours: { start: '09:00', end: '18:00' }
+      });
+    } catch (err) {
+      alert(`Failed to update location: ${err.message}`);
     }
   };
 
@@ -1681,7 +1724,10 @@ const CompanySettings = () => {
                                   </button>
                                 </li>
                                 <li>
-                                  <button className="dropdown-item">
+                                  <button
+                                    className="dropdown-item"
+                                    onClick={() => handleOpenEditLocation(location)}
+                                  >
                                     <Icon icon="heroicons:pencil-square" className="me-2" />
                                     Edit
                                   </button>
@@ -1712,6 +1758,11 @@ const CompanySettings = () => {
                           <div className="mb-3">
                             <small className="text-muted d-block">Working Hours</small>
                             <span className="fw-medium">{location.workingHours.start} - {location.workingHours.end}</span>
+                          </div>
+
+                          <div className="mb-3">
+                            <small className="text-muted d-block">Employees Assigned</small>
+                            <span className="fw-medium">{location.employeeCount}</span>
                           </div>
                           
                           <div className="d-flex justify-content-center gap-1">
@@ -2531,6 +2582,157 @@ const CompanySettings = () => {
                     Cancel
                   </button>
                   <button type="submit" className="btn btn-primary">Add Location</button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showEditLocation && (
+        <div className="modal show d-block fade" style={{ backgroundColor: "rgba(0,0,0,0.5)" }}>
+          <div className="modal-dialog modal-dialog-centered">
+            <div className="modal-content border-0 shadow-lg">
+              <div className="modal-header d-flex align-items-center justify-content-between border-0 pb-2 p-2 p-md-3">
+                <div className="d-flex flex-column w-100 me-2">
+                  <h5 className="modal-title fw-bold mb-2">Edit Location</h5>
+                  <hr style={{ borderTop: "1px solid #aaa", margin: "0" }} />
+                </div>
+                <button
+                  type="button"
+                  className="btn-close"
+                  onClick={() => { setShowEditLocation(false); setEditingLocationId(null); }}
+                ></button>
+              </div>
+              <form onSubmit={handleUpdateLocation}>
+                <div className="modal-body pt-2">
+                  <div className="row g-3">
+                    <div className="col-12">
+                      <label className="form-label fw-medium">Location Name *</label>
+                      <input
+                        type="text"
+                        className="form-control"
+                        required
+                        value={newLocation.name}
+                        onChange={(e) => setNewLocation({ ...newLocation, name: e.target.value })}
+                      />
+                    </div>
+                    <div className="col-12">
+                      <label className="form-label fw-medium">Address *</label>
+                      <textarea
+                        className="form-control"
+                        rows="3"
+                        required
+                        value={newLocation.address}
+                        onChange={(e) => setNewLocation({ ...newLocation, address: e.target.value })}
+                      />
+                    </div>
+                    <div className="col-12">
+                      <label className="form-label fw-medium">Timezone *</label>
+                      <input
+                        type="text"
+                        className="form-control"
+                        required
+                        placeholder="Enter timezone"
+                        value={newLocation.timezone}
+                        onChange={(e) => setNewLocation({ ...newLocation, timezone: e.target.value })}
+                      />
+                    </div>
+
+                    <div className="col-12">
+                      <label className="form-label fw-medium">Weekend Days</label>
+                      <div className="row g-2">
+                        {["Monday","Tuesday","Wednesday","Thursday","Friday","Saturday","Sunday"].map((day) => {
+                          const isChecked = newLocation.weekendDays.includes(day);
+                          return (
+                            <div key={day} className="col-6 col-md-4">
+                              <div
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  cursor: 'pointer',
+                                  gap: '0.5rem',
+                                }}
+                                onClick={() => {
+                                  const updatedDays = isChecked
+                                    ? newLocation.weekendDays.filter(d => d !== day)
+                                    : [...newLocation.weekendDays, day];
+                                  setNewLocation({ ...newLocation, weekendDays: updatedDays });
+                                }}
+                              >
+                                <input
+                                  type="checkbox"
+                                  checked={isChecked}
+                                  readOnly
+                                  style={{ display: 'none' }}
+                                />
+                                <span
+                                  style={{
+                                    width: '22px',
+                                    height: '22px',
+                                    display: 'inline-block',
+                                    borderRadius: '4px',
+                                    border: '2px solid #0d6efd',
+                                    backgroundColor: isChecked ? '#0d6efd' : '#fff',
+                                    position: 'relative',
+                                    flexShrink: 0,
+                                  }}
+                                >
+                                  {isChecked && (
+                                    <svg
+                                      viewBox="0 0 16 16"
+                                      width="16"
+                                      height="16"
+                                      style={{
+                                        position: 'absolute',
+                                        top: '50%',
+                                        left: '50%',
+                                        transform: 'translate(-50%, -50%)',
+                                        fill: 'white',
+                                      }}
+                                    >
+                                      <path d="M6.003 11.803l-3.24-3.24 1.415-1.414L6.003 8.976l5.824-5.823 1.414 1.414z" />
+                                    </svg>
+                                  )}
+                                </span>
+                                <label style={{ cursor: 'pointer', userSelect: 'none' }}>{day}</label>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                    <div className="col-12 col-md-6">
+                      <label className="form-label fw-medium">Working Hours Start</label>
+                      <input
+                        type="time"
+                        className="form-control"
+                        value={newLocation.workingHours.start}
+                        onChange={(e) => setNewLocation({
+                          ...newLocation,
+                          workingHours: { ...newLocation.workingHours, start: e.target.value }
+                        })}
+                      />
+                    </div>
+                    <div className="col-12 col-md-6">
+                      <label className="form-label fw-medium">Working Hours End</label>
+                      <input
+                        type="time"
+                        className="form-control"
+                        value={newLocation.workingHours.end}
+                        onChange={(e) => setNewLocation({
+                          ...newLocation,
+                          workingHours: { ...newLocation.workingHours, end: e.target.value }
+                        })}
+                      />
+                    </div>
+                  </div>
+                </div>
+                <div className="modal-footer border-0">
+                  <button type="button" className="btn btn-outline-secondary" onClick={() => { setShowEditLocation(false); setEditingLocationId(null); }}>
+                    Cancel
+                  </button>
+                  <button type="submit" className="btn btn-primary">Save Changes</button>
                 </div>
               </form>
             </div>

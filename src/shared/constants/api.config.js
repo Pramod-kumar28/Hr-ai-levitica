@@ -206,6 +206,18 @@ export const API_ENDPOINTS = {
     CREATE: '/employees',
   },
 
+  // Employee Master (Basic Info view/edit — GET/PUT single employee record)
+  EMPLOYEE_MASTER: {
+    GET: (id) => `/api/employees/master/${id}`,
+    UPDATE: (id) => `/api/employees/master/${id}`,
+  },
+
+  // Basic Details (first onboarding-wizard step — name/gender/DOB)
+  BASIC_DETAILS: {
+    SUBMIT: '/basic-details/',
+    GET: (id) => `/basic-details/${id}`,
+  },
+
   // Super Admin
   SUPER_ADMIN: {
     USERS: '/api/admin/superadmin/users',

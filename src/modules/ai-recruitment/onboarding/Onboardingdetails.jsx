@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { FaUserCircle, FaMoon } from "react-icons/fa";
 import { ToastContainer, toast } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
+import { BASE_URL, API_ENDPOINTS } from "../../../shared/constants/api.config";
 
 const Onboardingdetails = () => {
     const [formData, setFormData] = useState({
@@ -14,6 +15,10 @@ const Onboardingdetails = () => {
     });
 
     const [step, setStep] = useState(1); // Track onboarding step
+    const [submitting, setSubmitting] = useState(false);
+    const [recordId, setRecordId] = useState(
+        () => localStorage.getItem("basicDetailsRecordId") || null
+    );
 
     const handleChange = (e) => {
         const { name, value, files } = e.target;
@@ -24,7 +29,7 @@ const Onboardingdetails = () => {
         }
     };
 
-    const handleSubmit = (e) => {
+    const handleSubmit = async (e) => {
         e.preventDefault();
 
         if (!formData.firstName || !formData.lastName || !formData.gender || !formData.dob) {
@@ -32,11 +37,40 @@ const Onboardingdetails = () => {
             return;
         }
 
-        toast.success("Form submitted successfully!");
-        console.log("Form Submitted", formData);
+        setSubmitting(true);
+        try {
+            const res = await fetch(`${BASE_URL}${API_ENDPOINTS.BASIC_DETAILS.SUBMIT}`, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    first_name: formData.firstName,
+                    middle_name: formData.middleName || null,
+                    last_name: formData.lastName,
+                    gender: formData.gender,
+                    date_of_birth: formData.dob,
+                }),
+            });
 
-        // Go to next step
-        setStep(step + 1);
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({}));
+                throw new Error(err.detail || "Failed to submit basic details");
+            }
+
+            const saved = await res.json();
+            setRecordId(saved.id);
+            localStorage.setItem("basicDetailsRecordId", saved.id);
+
+            // Photo upload has no matching backend field yet (basic_details
+            // model only stores name/gender/DOB) — kept local-only until a
+            // profile-photo endpoint exists.
+
+            toast.success("Form submitted successfully!");
+            setStep(step + 1);
+        } catch (err) {
+            toast.error(err.message || "Failed to submit basic details");
+        } finally {
+            setSubmitting(false);
+        }
     };
 
     const handleSaveDraft = () => {
@@ -69,7 +103,10 @@ const Onboardingdetails = () => {
                             style={{ height: "50px", width: "50px" }}
                         />
                         <div>
-                            <h6 className="mb-0">Onboarding Form: Ramu</h6>
+                            <h6 className="mb-0">
+                                Onboarding Form{formData.firstName ? `: ${formData.firstName}` : ""}
+                                {recordId ? " (saved)" : ""}
+                            </h6>
                             <small className="text-muted">Levitica Technologies Private Limited</small>
                         </div>
                     </div>
@@ -229,8 +266,8 @@ const Onboardingdetails = () => {
                             >
                                 Cancel
                             </button>
-                            <button className="btn btn-primary" type="submit">
-                                Continue →
+                            <button className="btn btn-primary" type="submit" disabled={submitting}>
+                                {submitting ? "Submitting..." : "Continue →"}
                             </button>
                         </div>
                     </div>

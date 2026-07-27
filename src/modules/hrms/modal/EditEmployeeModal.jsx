@@ -1,6 +1,12 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Icon } from '@iconify/react/dist/iconify.js';
 import Modal from '../../../shared/components/Modal';
+import { BASE_URL } from '../../../shared/constants/api.config';
+
+const authHeader = () => {
+  const token = localStorage.getItem('token') || localStorage.getItem('access_token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
 
 const EditEmployeeModal = ({
   showEditModal,
@@ -13,6 +19,26 @@ const EditEmployeeModal = ({
   formatDate,
   formatCurrency
 }) => {
+  // Branches (company locations/offices) for the Location dropdown — loaded once on mount.
+  // Declared before the early-return below so hook order stays stable across renders.
+  const [branches, setBranches] = useState([]);
+  useEffect(() => {
+    const loadBranches = async () => {
+      try {
+        const res = await fetch(`${BASE_URL}/company-settings/locations/`, {
+          headers: authHeader(),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setBranches(data.locations || []);
+        }
+      } catch (err) {
+        console.error('Failed to load branches', err);
+      }
+    };
+    loadBranches();
+  }, []);
+
   if (!editEmployeeData) return null;
 
   return (
@@ -1305,18 +1331,32 @@ const EditEmployeeModal = ({
 
                 {/* Row 7: Location and Workplace Type */}
                 <div className="col-md-6">
-                  <label className="form-label fw-bold">Location <span className="text-danger">*</span></label>
-                  <input
-                    type="text"
-                    className="form-control"
-                    value={editEmployeeData.employmentInfo?.location || editEmployeeData.location || ''}
+                  <label className="form-label fw-bold">Branch / Location <span className="text-danger">*</span></label>
+                  <select
+                    className="form-select"
+                    value={editEmployeeData.employmentInfo?.locationId || ''}
                     onChange={(e) => {
-                      handleEditInputChange('location', e.target.value, 'employmentInfo.location');
-                      handleEditInputChange('location', e.target.value);
+                      const selectedId = e.target.value ? Number(e.target.value) : null;
+                      const selectedBranch = branches.find(b => b.id === selectedId);
+                      const name = selectedBranch ? selectedBranch.name : '';
+                      handleEditInputChange('locationId', selectedId, 'employmentInfo.locationId');
+                      handleEditInputChange('location', name, 'employmentInfo.location');
+                      handleEditInputChange('location', name);
                     }}
-                    placeholder="Enter location"
                     required
-                  />
+                  >
+                    <option value="">Select a branch...</option>
+                    {branches.map((b) => (
+                      <option key={b.id} value={b.id}>
+                        {b.name}{b.is_default ? ' (Default)' : ''}
+                      </option>
+                    ))}
+                  </select>
+                  {branches.length === 0 && (
+                    <small className="text-muted">
+                      No branches found — add one under Company Settings &rsaquo; Locations first.
+                    </small>
+                  )}
                 </div>
 
                 <div className="col-md-6">
