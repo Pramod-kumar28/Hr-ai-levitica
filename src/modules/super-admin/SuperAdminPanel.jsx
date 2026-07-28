@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Edit } from 'lucide-react';
+import { Edit, Trash2 } from 'lucide-react';
 import { adminAPI } from "../../shared/utils/api";
 import { BASE_URL } from "../../shared/constants/api.config";
 import { UserPlus } from "lucide-react";
@@ -152,6 +152,45 @@ const SuperAdminPanel = () => {
     } catch (error) {
       console.error('Error saving user:', error);
       alert('Error saving user');
+    }
+  };
+
+  // Delete user
+  const deleteUser = async (user) => {
+    if (user.role?.toLowerCase() === 'superadmin') {
+      alert('The Super Admin account cannot be deleted.');
+      return;
+    }
+
+    const confirmed = window.confirm(
+      `Delete ${user.name || user.email}? This action is permanent and cannot be undone.`
+    );
+    if (!confirmed) return;
+
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) {
+        alert('Authentication required. Please log in again.');
+        return;
+      }
+
+      const response = await fetch(`${BASE_URL}/api/admin/superadmin/users/${user.id}`, {
+        method: 'DELETE',
+        headers: {
+          'Authorization': `Bearer ${token}`
+        }
+      });
+
+      if (response.ok || response.status === 204) {
+        alert('User deleted successfully');
+        fetchData();
+      } else {
+        const errorData = await response.json().catch(() => ({}));
+        alert(errorData.detail || 'Error deleting user');
+      }
+    } catch (error) {
+      console.error('Error deleting user:', error);
+      alert('Error deleting user');
     }
   };
 
@@ -343,6 +382,15 @@ const SuperAdminPanel = () => {
                           >
                             <Edit size={16} />
                           </button>
+                          <button
+                            type="button"
+                            className="btn btn-sm btn-outline-danger"
+                            onClick={() => deleteUser(user)}
+                            title="Delete"
+                            disabled={user.role?.toLowerCase() === 'superadmin'}
+                          >
+                            <Trash2 size={16} />
+                          </button>
                         </div>
                       </td>
                     </tr>
@@ -496,5 +544,3 @@ const SuperAdminPanel = () => {
 };
 
 export default SuperAdminPanel;
-
-
