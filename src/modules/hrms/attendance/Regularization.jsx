@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useReducer } from "react";
+import React, { useState, useEffect, useMemo, useCallback } from "react";
 import { Icon } from "@iconify/react";
 import { toast, ToastContainer } from "react-toastify";
 import "react-toastify/dist/ReactToastify.css";
@@ -6,42 +6,92 @@ import "react-toastify/dist/ReactToastify.css";
 import RegularizationRequestModal from "../modal/RegularizationRequestModal";
 import RegularizationApprovalModal from "../modal/RegularizationApprovalModal";
 import RegularizationBulkModal from "../modal/RegularizationBulkModal";
+import { regularizationAPI, employeeAPI } from "../../../shared/utils/api";
 
-const initialEmployees = [
-];
+// ---------------------------------------------------------------------------
+// The UI (this page + its 3 modals) speaks in short, front-end-friendly type
+// codes: missing / incorrect / forgot / wfh / on_duty. The backend
+// (schema/HR_Automation/regularization.py) speaks in its own fixed list of
+// request_type strings (see REQUEST_TYPES in the router). These two maps
+// translate between them.
+// ---------------------------------------------------------------------------
+const TYPE_TO_BACKEND = {
+  missing: "Missing Punch",
+  incorrect: "Wrong Punch In", // closest match for the UI's generic "Incorrect Time" case
+  forgot: "Forgot Punch",
+  wfh: "Work From Home",
+  on_duty: "On Duty",
+};
 
-const regularizationReducer = (state, action) => {
-  switch (action.type) {
-    case "SET_REQUESTS":
-      return { ...state, requests: action.payload };
-    case "ADD_REQUEST":
-      return { ...state, requests: [...state.requests, action.payload] };
-    case "UPDATE_REQUEST":
-      return {
-        ...state,
-        requests: state.requests.map((r) =>
-          r.id === action.payload.id ? action.payload : r
-        ),
-      };
-    case "DELETE_REQUEST":
-      return {
-        ...state,
-        requests: state.requests.filter((r) => r.id !== action.payload),
-      };
-    case "SET_AUTO_REJECT_RULES":
-      return { ...state, autoRejectRules: action.payload };
-    case "ADD_AUTO_REJECT_RULE":
-      return {
-        ...state,
-        autoRejectRules: [...state.autoRejectRules, action.payload],
-      };
-    case "SET_BULK_PROCESSING":
-      return { ...state, bulkProcessing: action.payload };
-    case "ADD_REPORT":
-      return { ...state, reports: [...state.reports, action.payload] };
-    default:
-      return state;
-  }
+const BACKEND_TO_TYPE = {
+  "Missing Punch": "missing",
+  "Forgot Punch": "forgot",
+  "Wrong Punch In": "incorrect",
+  "Wrong Punch Out": "incorrect",
+  "Early Departure": "incorrect",
+  "Late Arrival": "incorrect",
+  "Work From Home": "wfh",
+  "On Duty": "on_duty",
+  "Other": "other",
+};
+
+const REPORT_FORMAT_TO_BACKEND = { pdf: "PDF", excel: "Excel", csv: "CSV" };
+
+const BULK_ISSUE_LABELS = {
+  system: "System Failure",
+  device: "Device Malfunction",
+  sync: "Sync Error",
+  network: "Network Failure",
+  other: "Other",
+};
+
+// Backend RegularizationRequestResponse -> the shape this page's JSX expects
+// (kept close to the original localStorage-era shape so the render functions
+// and the 3 modal components below don't need to change).
+const mapRequestFromApi = (r) => {
+  const rawStatus = (r.status || "pending").toLowerCase(); // pending | approved | rejected
+  const isAutoRejected =
+    rawStatus === "rejected" &&
+    !!r.review_comments &&
+    r.review_comments.toLowerCase().startsWith("auto-rejected");
+
+  return {
+    id: r.id,
+    employeeId: r.employee_id,
+    employeeName: r.employee_name || `Employee #${r.employee_id}`,
+    department: r.department || "Unknown",
+    requestType: BACKEND_TO_TYPE[r.request_type] || "other",
+    requestTypeRaw: r.request_type,
+    reason: r.reason,
+    remarks: r.review_comments || "",
+    reviewComments: r.review_comments,
+    status: isAutoRejected ? "auto-rejected" : rawStatus,
+    submittedAt: r.submitted_at,
+    reviewedBy: r.reviewed_by,
+    reviewedAt: r.reviewed_at,
+    approvedBy: rawStatus === "approved" ? (r.reviewed_by ? `User #${r.reviewed_by}` : "HR") : undefined,
+    rejectedBy:
+      rawStatus === "rejected"
+        ? isAutoRejected
+          ? "System"
+          : r.reviewed_by
+          ? `User #${r.reviewed_by}`
+          : "HR"
+        : undefined,
+    isBulk: r.is_bulk,
+    bulkBatchId: r.bulk_batch_id,
+    requestDate: r.request_date,
+    date: r.request_date,
+    originalCheckIn: r.original_check_in,
+    originalCheckOut: r.original_check_out,
+    requestedCheckIn: r.requested_check_in,
+    requestedCheckOut: r.requested_check_out,
+    dateTime: r.requested_check_in
+      ? `${r.request_date} ${r.requested_check_in}`
+      : r.requested_check_out
+      ? `${r.request_date} ${r.requested_check_out}`
+      : r.request_date,
+  };
 };
 
 const Regularization = () => {
@@ -54,6 +104,15 @@ const Regularization = () => {
   const [searchTerm, setSearchTerm] = useState("");
   const [filterStatus, setFilterStatus] = useState("All");
   const [filterType, setFilterType] = useState("All");
+
+  const [isLoading, setIsLoading] = useState(true);
+  const [isSubmittingRequest, setIsSubmittingRequest] = useState(false);
+  const [isBulkSubmitting, setIsBulkSubmitting] = useState(false);
+
+  const [employees, setEmployees] = useState([]);
+  const [requests, setRequests] = useState([]);
+  const [autoRejectRules, setAutoRejectRules] = useState([]);
+  const [reports, setReports] = useState([]); // client-side log of reports generated this session
 
   const [requestForm, setRequestForm] = useState({
     employeeId: "",
@@ -95,168 +154,295 @@ const Regularization = () => {
     format: "pdf",
   });
 
-  const loadFromStorage = (key, defaultValue) => {
-    const stored = localStorage.getItem(key);
-    return stored ? JSON.parse(stored) : defaultValue;
-  };
+  // ---- data loading -------------------------------------------------------
 
-  const initialState = {
-    requests: loadFromStorage("regularizationRequests", []),
-    autoRejectRules: loadFromStorage("autoRejectRules", [
-      { id: 1, requestType: "missing", days: 7, enabled: true },
-      { id: 2, requestType: "forgot", days: 5, enabled: true },
-    ]),
-    bulkProcessing: loadFromStorage("bulkProcessing", []),
-    reports: loadFromStorage("regularizationReports", []),
-  };
+  const loadRequests = useCallback(async () => {
+    try {
+      const res = await regularizationAPI.listRequests();
+      setRequests((res?.items || []).map(mapRequestFromApi));
+    } catch (err) {
+      console.error("Failed to load regularization requests:", err);
+      toast.error(err.message || "Failed to load regularization requests");
+    }
+  }, []);
 
-  const [state, dispatch] = useReducer(regularizationReducer, initialState);
-  const { requests, autoRejectRules, bulkProcessing, reports } = state;
-
-  useEffect(() => {
-    localStorage.setItem("regularizationRequests", JSON.stringify(requests));
-    localStorage.setItem("autoRejectRules", JSON.stringify(autoRejectRules));
-    localStorage.setItem("bulkProcessing", JSON.stringify(bulkProcessing));
-    localStorage.setItem("regularizationReports", JSON.stringify(reports));
-  }, [state]);
+  const loadAutoRejectRules = useCallback(async () => {
+    try {
+      const rules = await regularizationAPI.listAutoRejectRules();
+      setAutoRejectRules(Array.isArray(rules) ? rules : []);
+    } catch (err) {
+      console.error("Failed to load auto-reject rules:", err);
+      toast.error(err.message || "Failed to load auto-reject rules");
+    }
+  }, []);
 
   useEffect(() => {
-    const processAutoReject = () => {
-      const today = new Date();
-      let rejectedCount = 0;
+    let cancelled = false;
 
-      requests.forEach((request) => {
-        if (request.status === "pending") {
-          const rule = autoRejectRules.find(
-            (r) => r.requestType === request.requestType && r.enabled
-          );
-          if (rule) {
-            const requestDate = new Date(request.submittedAt);
-            const daysDiff = Math.floor((today - requestDate) / (1000 * 60 * 60 * 24));
-
-            if (daysDiff >= rule.days) {
-              const updatedRequest = {
-                ...request,
-                status: "auto-rejected",
-                rejectedAt: today.toISOString(),
-                rejectedBy: "System",
-                rejectionReason: `Auto-rejected after ${rule.days} days`,
-                isAutoRejected: true,
-              };
-              dispatch({ type: "UPDATE_REQUEST", payload: updatedRequest });
-              rejectedCount++;
-            }
-          }
-        }
-      });
-
-      if (rejectedCount > 0) {
-        toast.info(`Auto-rejected ${rejectedCount} request(s)`);
+    const loadAll = async () => {
+      setIsLoading(true);
+      try {
+        const [empRes, reqRes, rulesRes] = await Promise.all([
+          employeeAPI.list(),
+          regularizationAPI.listRequests(),
+          regularizationAPI.listAutoRejectRules(),
+        ]);
+        if (cancelled) return;
+        setEmployees(Array.isArray(empRes) ? empRes : empRes?.items || []);
+        setRequests((reqRes?.items || []).map(mapRequestFromApi));
+        setAutoRejectRules(Array.isArray(rulesRes) ? rulesRes : []);
+      } catch (err) {
+        console.error("Failed to load regularization data:", err);
+        toast.error(err.message || "Failed to load regularization data");
+      } finally {
+        if (!cancelled) setIsLoading(false);
       }
     };
 
-    const interval = setInterval(processAutoReject, 3600000);
-    processAutoReject();
+    loadAll();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
-    return () => clearInterval(interval);
-  }, [requests, autoRejectRules]);
+  const initialEmployees = useMemo(
+    () =>
+      employees.map((e) => ({
+        id: e.id,
+        name: [e.first_name, e.middle_name, e.last_name].filter(Boolean).join(" ") || `Employee #${e.id}`,
+        department: e.department || "—",
+        isActive: e.is_active !== false,
+      })),
+    [employees]
+  );
 
-  const handleSubmitRequest = () => {
+  // ---- request submit ------------------------------------------------------
+
+  const buildRequestPayload = (form) => {
+    const backendType = TYPE_TO_BACKEND[form.requestType] || "Other";
+    let requestDate = null;
+    let originalCheckIn = null;
+    let requestedCheckIn = null;
+    let requestedCheckOut = null;
+    let extraNotes = "";
+
+    switch (form.requestType) {
+      case "missing": {
+        if (form.dateTime) {
+          const [d, t] = form.dateTime.split("T");
+          requestDate = d;
+          requestedCheckIn = t;
+        }
+        break;
+      }
+      case "incorrect": {
+        if (form.correctedTime) {
+          const [d, t] = form.correctedTime.split("T");
+          requestDate = d;
+          requestedCheckIn = t;
+        }
+        if (form.originalTime) {
+          originalCheckIn = form.originalTime.split("T")[1] || null;
+        }
+        break;
+      }
+      case "forgot": {
+        requestDate = form.date || null;
+        if (form.punchType === "OUT") requestedCheckOut = form.approxTime || null;
+        else requestedCheckIn = form.approxTime || null;
+        break;
+      }
+      case "wfh": {
+        requestDate = form.date || null;
+        extraNotes = ` | Location: ${form.location || "-"}. Work summary: ${form.summary || "-"}`;
+        break;
+      }
+      case "on_duty": {
+        requestDate = form.date || null;
+        requestedCheckIn = form.fromTime || null;
+        requestedCheckOut = form.toTime || null;
+        extraNotes = ` | Duty type: ${form.dutyType || "-"}. Purpose/Location: ${form.purpose || "-"}`;
+        break;
+      }
+      default:
+        requestDate = form.date || null;
+    }
+
+    return {
+      requestDate,
+      payload: {
+        employee_id: parseInt(form.employeeId, 10),
+        request_type: backendType,
+        request_date: requestDate,
+        original_check_in: originalCheckIn,
+        requested_check_in: requestedCheckIn,
+        requested_check_out: requestedCheckOut,
+        reason: `${form.reason}${extraNotes} — Remarks: ${form.remarks}`.trim(),
+      },
+    };
+  };
+
+  const handleSubmitRequest = async () => {
     if (!requestForm.employeeId || !requestForm.reason || !requestForm.remarks) {
       toast.error("Please fill all required fields (Employee, Reason, Remarks)");
       return;
     }
 
-    const employee = initialEmployees.find((e) => e.id === requestForm.employeeId);
-    const request = {
-      id: Date.now(),
-      ...requestForm,
-      employeeName: employee?.name || requestForm.employeeId,
-      department: employee?.department || "Unknown",
-      status: "pending",
-      submittedAt: new Date().toISOString(),
-      submittedBy: employee?.name || requestForm.employeeId,
-      approvalWorkflow: [
-        { level: 1, approver: "Manager", status: "pending", required: true },
-        { level: 2, approver: "HR", status: "pending", required: true },
-      ],
-      attachments: requestForm.attachment ? [requestForm.attachment.name] : [],
-    };
+    const { requestDate, payload } = buildRequestPayload(requestForm);
+    if (!requestDate) {
+      toast.error("Please fill in the date/time details for this request type");
+      return;
+    }
 
-    dispatch({ type: "ADD_REQUEST", payload: request });
-    setShowRequestModal(false);
-    setRequestForm({
-      employeeId: "",
-      requestType: "missing",
-      dateTime: "",
-      originalTime: "",
-      correctedTime: "",
-      date: "",
-      punchType: "IN",
-      approxTime: "",
-      location: "",
-      fromTime: "",
-      toTime: "",
-      dutyType: "",
-      purpose: "",
-      reason: "",
-      remarks: "",
-      summary: "",
-      attachment: null,
-    });
-    toast.success("Regularization request submitted successfully");
+    setIsSubmittingRequest(true);
+    try {
+      await regularizationAPI.createRequest(payload);
+      await loadRequests();
+      setShowRequestModal(false);
+      setRequestForm({
+        employeeId: "",
+        requestType: "missing",
+        dateTime: "",
+        originalTime: "",
+        correctedTime: "",
+        date: "",
+        punchType: "IN",
+        approxTime: "",
+        location: "",
+        fromTime: "",
+        toTime: "",
+        dutyType: "",
+        purpose: "",
+        reason: "",
+        remarks: "",
+        summary: "",
+        attachment: null,
+      });
+      toast.success("Regularization request submitted successfully");
+    } catch (err) {
+      toast.error(err.message || "Failed to submit regularization request");
+    } finally {
+      setIsSubmittingRequest(false);
+    }
   };
 
-  const handleApproveRequest = (requestId, approved) => {
-    const request = requests.find((r) => r.id === requestId);
-    if (!request) return;
+  // ---- approve / reject ------------------------------------------------------
 
-    const updatedRequest = {
-      ...request,
-      status: approved ? "approved" : "rejected",
-      [approved ? "approvedAt" : "rejectedAt"]: new Date().toISOString(),
-      [approved ? "approvedBy" : "rejectedBy"]: "Manager",
-      rejectionReason: approved ? null : approvalForm.remarks || "Not approved",
-      approvalWorkflow: request.approvalWorkflow.map((w) =>
-        w.status === "pending"
-          ? { ...w, status: approved ? "approved" : "rejected" }
-          : w
-      ),
-    };
-
-    dispatch({ type: "UPDATE_REQUEST", payload: updatedRequest });
-    setShowApprovalModal(false);
-    setApprovalForm({ action: "", remarks: "" });
-    toast.success(`Request ${approved ? "approved" : "rejected"} successfully`);
+  const handleApproveRequest = async (requestId, approved) => {
+    try {
+      await regularizationAPI.reviewRequest(requestId, {
+        status: approved ? "Approved" : "Rejected",
+        review_comments: approvalForm.remarks || null,
+      });
+      await loadRequests();
+      setShowApprovalModal(false);
+      setSelectedRequest(null);
+      setApprovalForm({ action: "", remarks: "" });
+      toast.success(`Request ${approved ? "approved" : "rejected"} successfully`);
+    } catch (err) {
+      toast.error(err.message || "Failed to update the request");
+    }
   };
 
-  const handleBulkProcess = () => {
+  // ---- bulk processing ------------------------------------------------------
+  // The bulk modal collects a date range + an issue type (system-wide problems
+  // like device/sync/network failures), but the backend's /bulk-process only
+  // accepts ONE request_date per call. We loop over each day in the chosen
+  // range and create one bulk batch per day for every active employee.
+
+  const handleBulkProcess = async () => {
     if (!bulkForm.fromDate || !bulkForm.toDate || !bulkForm.issueType) {
       toast.error("Please fill all required fields");
       return;
     }
 
-    const processedCount = bulkForm.employees.length || 10;
-    const bulkProcess = {
-      id: Date.now(),
-      ...bulkForm,
-      processedCount,
-      status: "completed",
-      processedAt: new Date().toISOString(),
-      processedBy: "HR Admin",
-    };
+    const from = new Date(bulkForm.fromDate);
+    const to = new Date(bulkForm.toDate);
+    if (Number.isNaN(from.getTime()) || Number.isNaN(to.getTime()) || from > to) {
+      toast.error("From Date must be on or before To Date");
+      return;
+    }
 
-    dispatch({ type: "SET_BULK_PROCESSING", payload: [...bulkProcessing, bulkProcess] });
-    setShowBulkModal(false);
-    setBulkForm({
-      fromDate: "",
-      toDate: "",
-      issueType: "",
-      employees: [],
-      file: null,
-    });
-    toast.success(`Bulk regularization processed for ${processedCount} employees`);
+    const dayCount = Math.floor((to - from) / (1000 * 60 * 60 * 24)) + 1;
+    if (dayCount > 60) {
+      toast.error("Please choose a date range of 60 days or less for bulk processing");
+      return;
+    }
+
+    const activeEmployeeIds = initialEmployees.filter((e) => e.isActive).map((e) => e.id);
+    if (activeEmployeeIds.length === 0) {
+      toast.error("No active employees found to process");
+      return;
+    }
+
+    const issueLabel = BULK_ISSUE_LABELS[bulkForm.issueType] || bulkForm.issueType;
+    const reason = `Bulk regularization due to ${issueLabel} affecting attendance capture from ${bulkForm.fromDate} to ${bulkForm.toDate}.${
+      bulkForm.file ? ` Reference file: ${bulkForm.file.name}.` : ""
+    }`;
+
+    setIsBulkSubmitting(true);
+    try {
+      let totalCreated = 0;
+      for (let i = 0; i < dayCount; i++) {
+        const d = new Date(from);
+        d.setDate(d.getDate() + i);
+        const dateStr = d.toISOString().slice(0, 10);
+        // eslint-disable-next-line no-await-in-loop
+        const result = await regularizationAPI.bulkProcess({
+          employee_ids: activeEmployeeIds,
+          request_type: "Other",
+          request_date: dateStr,
+          reason,
+          auto_approve: true,
+        });
+        totalCreated += result?.created_count || 0;
+      }
+
+      await loadRequests();
+      setShowBulkModal(false);
+      setBulkForm({ fromDate: "", toDate: "", issueType: "", employees: [], file: null });
+      toast.success(
+        `Bulk regularization processed for ${activeEmployeeIds.length} employee(s), ${totalCreated} record(s) created`
+      );
+    } catch (err) {
+      toast.error(err.message || "Failed to process bulk regularization");
+    } finally {
+      setIsBulkSubmitting(false);
+    }
   };
+
+  const bulkBatches = useMemo(() => {
+    const map = new Map();
+    requests.forEach((r) => {
+      if (!r.isBulk || !r.bulkBatchId) return;
+      if (!map.has(r.bulkBatchId)) {
+        map.set(r.bulkBatchId, {
+          batchId: r.bulkBatchId,
+          dates: [],
+          count: 0,
+          status: r.status,
+          reason: r.reason,
+          reviewedBy: r.reviewedBy,
+        });
+      }
+      const entry = map.get(r.bulkBatchId);
+      entry.dates.push(r.requestDate);
+      entry.count += 1;
+    });
+    return Array.from(map.values())
+      .map((b) => ({
+        id: b.batchId,
+        fromDate: b.dates.reduce((min, d) => (d < min ? d : min), b.dates[0]),
+        toDate: b.dates.reduce((max, d) => (d > max ? d : max), b.dates[0]),
+        issueType: b.reason,
+        processedCount: b.count,
+        status: b.status,
+        processedBy: b.reviewedBy ? `User #${b.reviewedBy}` : "HR Admin",
+      }))
+      .sort((a, b) => (a.fromDate < b.fromDate ? 1 : -1));
+  }, [requests]);
+
+  // ---- reports ------------------------------------------------------
 
   const handleGenerateReport = () => {
     if (!reportForm.fromDate || !reportForm.toDate) {
@@ -264,65 +450,57 @@ const Regularization = () => {
       return;
     }
 
-    let filteredReportData = requests.filter((req) => {
-      const requestDate = new Date(req.submittedAt);
-      const fromDate = new Date(reportForm.fromDate);
-      const toDate = new Date(reportForm.toDate);
-      toDate.setHours(23, 59, 59, 999);
+    const backendFormat = REPORT_FORMAT_TO_BACKEND[reportForm.format] || "PDF";
+    const backendType = reportForm.requestType ? TYPE_TO_BACKEND[reportForm.requestType] : "";
+    const url = regularizationAPI.getReportDownloadUrl(
+      reportForm.fromDate,
+      reportForm.toDate,
+      backendType,
+      backendFormat
+    );
+    window.open(url, "_blank");
 
-      if (requestDate < fromDate || requestDate > toDate) {
-        return false;
-      }
-      if (reportForm.requestType && reportForm.requestType !== "" && req.requestType !== reportForm.requestType) {
-        return false;
-      }
-      return true;
+    // The backend streams the file straight back and doesn't keep a reports
+    // history table, so we log generated reports client-side for this tab,
+    // estimating the record count from the requests we already have loaded.
+    const matching = requests.filter((r) => {
+      if (!r.requestDate) return false;
+      const inRange = r.requestDate >= reportForm.fromDate && r.requestDate <= reportForm.toDate;
+      const typeOk = !reportForm.requestType || r.requestType === reportForm.requestType;
+      return inRange && typeOk;
     });
 
-    const reportSummary = {
-      totalRequests: filteredReportData.length,
-      pending: filteredReportData.filter(r => r.status === "pending").length,
-      approved: filteredReportData.filter(r => r.status === "approved").length,
-      rejected: filteredReportData.filter(r => r.status === "rejected" || r.status === "auto-rejected").length,
-      byType: filteredReportData.reduce((acc, req) => {
-        acc[req.requestType] = (acc[req.requestType] || 0) + 1;
-        return acc;
-      }, {}),
-      byDepartment: filteredReportData.reduce((acc, req) => {
-        acc[req.department] = (acc[req.department] || 0) + 1;
-        return acc;
-      }, {})
-    };
+    setReports((prev) => [
+      ...prev,
+      {
+        id: Date.now(),
+        fromDate: reportForm.fromDate,
+        toDate: reportForm.toDate,
+        requestType: reportForm.requestType,
+        format: reportForm.format,
+        generatedAt: new Date().toISOString(),
+        summary: { totalRequests: matching.length },
+      },
+    ]);
 
-    const report = {
-      id: Date.now(),
-      ...reportForm,
-      generatedAt: new Date().toISOString(),
-      generatedBy: "HR Admin",
-      data: filteredReportData,
-      summary: reportSummary,
-      fileName: `regularization-report-${Date.now()}.${reportForm.format}`
-    };
-
-    dispatch({ type: "ADD_REPORT", payload: report });
-
-    const blob = new Blob([JSON.stringify(report, null, 2)], { type: 'application/json' });
-    const url = window.URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = report.fileName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    window.URL.revokeObjectURL(url);
-
-    toast.success(`Report generated successfully! Downloaded: ${report.fileName}`);
+    toast.success("Report download started");
     setReportForm({
       fromDate: "",
       toDate: "",
       requestType: "",
       format: "pdf",
     });
+  };
+
+  // ---- auto-reject rule toggling ------------------------------------------------------
+
+  const handleToggleAutoRejectRule = async (rule) => {
+    try {
+      const updated = await regularizationAPI.toggleAutoRejectRule(rule.id);
+      setAutoRejectRules((prev) => prev.map((r) => (r.id === rule.id ? updated : r)));
+    } catch (err) {
+      toast.error(err.message || "Failed to update auto-reject rule");
+    }
   };
 
   const filteredRequests = requests.filter((req) => {
@@ -445,7 +623,14 @@ const Regularization = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-700">
-              {filteredRequests.length === 0 ? (
+              {isLoading ? (
+                <tr>
+                  <td colSpan="6" className="p-6 text-center text-slate-400">
+                    <Icon icon="heroicons:arrow-path" className="w-6 h-6 mx-auto mb-2 animate-spin text-slate-300" />
+                    Loading regularization requests...
+                  </td>
+                </tr>
+              ) : filteredRequests.length === 0 ? (
                 <tr>
                   <td colSpan="6" className="p-6 text-center text-slate-400">
                     <Icon icon="heroicons:inbox" className="w-8 h-8 mx-auto mb-2 text-slate-300" />
@@ -537,36 +722,34 @@ const Regularization = () => {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-100 text-slate-700">
-                  {autoRejectRules.map((rule) => (
-                    <tr key={rule.id} className="hover:bg-slate-50/50 transition-colors">
-                      <td className="p-2 sm:p-3 font-medium">
-                        {getRequestTypeBadge(rule.requestType)}
-                      </td>
-                      <td className="p-2 sm:p-3">{rule.days} days</td>
-                      <td className="p-2 sm:p-3">
-                        {getStatusBadge(rule.enabled ? "approved" : "rejected")}
-                      </td>
-                      <td className="p-2 sm:p-3 text-right">
-                        <button
-                          className="px-3 py-1 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
-                          onClick={() => {
-                            const updated = {
-                              ...rule,
-                              enabled: !rule.enabled,
-                            };
-                            dispatch({
-                              type: "SET_AUTO_REJECT_RULES",
-                              payload: autoRejectRules.map((r) =>
-                                r.id === rule.id ? updated : r
-                              ),
-                            });
-                          }}
-                        >
-                          {rule.enabled ? "Disable" : "Enable"}
-                        </button>
+                  {autoRejectRules.length === 0 ? (
+                    <tr>
+                      <td colSpan="4" className="p-6 text-center text-slate-400">
+                        No auto-reject rules configured
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    autoRejectRules.map((rule) => (
+                      <tr key={rule.id} className="hover:bg-slate-50/50 transition-colors">
+                        <td className="p-2 sm:p-3 font-medium">
+                          {getRequestTypeBadge(BACKEND_TO_TYPE[rule.request_type] || "other")}
+                          <span className="ml-1 text-[10px] text-slate-400">{rule.request_type}</span>
+                        </td>
+                        <td className="p-2 sm:p-3">{rule.days_threshold} days</td>
+                        <td className="p-2 sm:p-3">
+                          {getStatusBadge(rule.is_enabled ? "approved" : "rejected")}
+                        </td>
+                        <td className="p-2 sm:p-3 text-right">
+                          <button
+                            className="px-3 py-1 text-xs font-medium text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-lg transition-colors"
+                            onClick={() => handleToggleAutoRejectRule(rule)}
+                          >
+                            {rule.is_enabled ? "Disable" : "Enable"}
+                          </button>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
@@ -636,29 +819,29 @@ const Regularization = () => {
         <p className="text-xs text-slate-500 mb-3">
           Use bulk processing for system-wide issues like device malfunctions, sync errors, or network failures affecting multiple employees.
         </p>
-        {bulkProcessing.length > 0 ? (
+        {bulkBatches.length > 0 ? (
           <div className="overflow-x-auto">
             <table className="w-full text-left border-collapse text-xs sm:text-sm">
               <thead className="bg-slate-50/75 border-b border-slate-200 text-slate-500 font-bold uppercase tracking-wider text-[10px]">
                 <tr>
                   <th className="p-2 sm:p-3">Date Range</th>
-                  <th className="p-2 sm:p-3">Issue Type</th>
+                  <th className="p-2 sm:p-3">Issue</th>
                   <th className="p-2 sm:p-3">Processed</th>
                   <th className="p-2 sm:p-3">Status</th>
                   <th className="p-2 sm:p-3">Processed By</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-700">
-                {bulkProcessing.map((process) => (
+                {bulkBatches.map((process) => (
                   <tr key={process.id} className="hover:bg-slate-50/50 transition-colors">
                     <td className="p-2 sm:p-3">{process.fromDate} to {process.toDate}</td>
                     <td className="p-2 sm:p-3">
-                      <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-cyan-100 text-cyan-700">
+                      <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-cyan-100 text-cyan-700 max-w-xs truncate">
                         {process.issueType}
                       </span>
                     </td>
-                    <td className="p-2 sm:p-3">{process.processedCount} employees</td>
-                    <td className="p-2 sm:p-3">{getStatusBadge("approved")}</td>
+                    <td className="p-2 sm:p-3">{process.processedCount} record(s)</td>
+                    <td className="p-2 sm:p-3">{getStatusBadge(process.status)}</td>
                     <td className="p-2 sm:p-3">{process.processedBy}</td>
                   </tr>
                 ))}
@@ -834,6 +1017,7 @@ const Regularization = () => {
           setRequestType={setRequestType}
           handleSubmitRequest={handleSubmitRequest}
           employees={initialEmployees}
+          isSubmitting={isSubmittingRequest}
         />
       )}
 
@@ -859,6 +1043,7 @@ const Regularization = () => {
           bulkForm={bulkForm}
           setBulkForm={setBulkForm}
           handleBulkProcess={handleBulkProcess}
+          isSubmitting={isBulkSubmitting}
         />
       )}
 

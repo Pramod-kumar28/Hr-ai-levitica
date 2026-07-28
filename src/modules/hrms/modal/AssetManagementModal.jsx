@@ -1,8 +1,11 @@
-import React from 'react';
+import React, { useState } from 'react';
 import { Icon } from '@iconify/react';
 import Modal from '../../../shared/components/Modal';
 
-const AssetManagementModal = ({ isOpen, onClose, assets, formatCurrency, onAssetReturn }) => {
+const AssetManagementModal = ({ isOpen, onClose, assets, formatCurrency, onAssetReturn, onAddAsset }) => {
+  const [newAsset, setNewAsset] = useState({ assetName: '', assetTag: '', category: 'Laptop' });
+  const [isAdding, setIsAdding] = useState(false);
+
   if (!assets) return null;
 
   const handleAssetReturn = (assetId, condition) => {
@@ -14,9 +17,61 @@ const AssetManagementModal = ({ isOpen, onClose, assets, formatCurrency, onAsset
     }
   };
 
+  const handleAddAsset = async () => {
+    if (!newAsset.assetName.trim()) {
+      alert('Please enter an asset name');
+      return;
+    }
+    setIsAdding(true);
+    try {
+      await onAddAsset?.(newAsset);
+      setNewAsset({ assetName: '', assetTag: '', category: 'Laptop' });
+    } finally {
+      setIsAdding(false);
+    }
+  };
+
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Asset Return Management" size="lg">
       <div className="space-y-6 p-2">
+        {onAddAsset && (
+          <div className="p-3 border border-dashed border-slate-300 rounded-xl grid grid-cols-1 sm:grid-cols-4 gap-2 items-end">
+            <div className="sm:col-span-2">
+              <label className="block text-xs font-medium text-slate-600 mb-1">Asset Name</label>
+              <input
+                type="text"
+                className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-sm"
+                value={newAsset.assetName}
+                onChange={(e) => setNewAsset({ ...newAsset, assetName: e.target.value })}
+                placeholder="e.g. Dell Latitude 5420"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Category</label>
+              <select
+                className="w-full px-2 py-1.5 border border-slate-200 rounded-lg text-sm bg-white"
+                value={newAsset.category}
+                onChange={(e) => setNewAsset({ ...newAsset, category: e.target.value })}
+              >
+                <option value="Laptop">Laptop</option>
+                <option value="Mobile">Mobile</option>
+                <option value="Other">Other</option>
+              </select>
+            </div>
+            <div>
+              <button
+                type="button"
+                className="w-full px-3 py-1.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 text-white rounded-lg text-sm font-medium transition flex items-center justify-center gap-1"
+                onClick={handleAddAsset}
+                disabled={isAdding}
+              >
+                <Icon icon="heroicons:plus" className="w-4 h-4" />
+                {isAdding ? 'Adding...' : 'Add'}
+              </button>
+            </div>
+          </div>
+        )}
+
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-50/50 border-b border-slate-200">

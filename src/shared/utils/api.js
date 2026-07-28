@@ -1542,6 +1542,68 @@ export const attendanceAPI = {
 };
 
 // ==========================================
+// REGULARIZATION APIs
+// (routers/HR_Automation/attendance/routers/regularization.py — mounted at
+// /api/attendance/regularization/*)
+// ==========================================
+export const regularizationAPI = {
+  // Requests
+  listRequests: (search, status, requestType) => {
+    const q = new URLSearchParams();
+    if (search) q.append('search', search);
+    if (status && status.toLowerCase() !== 'all') q.append('status', status);
+    if (requestType && requestType.toLowerCase() !== 'all') q.append('request_type', requestType);
+    const qs = q.toString();
+    return apiCall(`/api/attendance/regularization/requests${qs ? `?${qs}` : ''}`);
+  },
+  getRequest: (id) => apiCall(`/api/attendance/regularization/requests/${id}`),
+  createRequest: (data) => apiCall('/api/attendance/regularization/requests', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
+  }),
+  updateRequest: (id, data) => apiCall(`/api/attendance/regularization/requests/${id}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
+  }),
+  reviewRequest: (id, data) => apiCall(`/api/attendance/regularization/requests/${id}/review`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
+  }),
+  deleteRequest: (id) => apiCall(`/api/attendance/regularization/requests/${id}`, { method: 'DELETE' }),
+  listRequestTypes: () => apiCall('/api/attendance/regularization/request-types'),
+
+  // Auto-reject rule settings
+  listAutoRejectRules: () => apiCall('/api/attendance/regularization/settings/auto-reject-rules'),
+  createAutoRejectRule: (data) => apiCall('/api/attendance/regularization/settings/auto-reject-rules', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
+  }),
+  updateAutoRejectRule: (id, data) => apiCall(`/api/attendance/regularization/settings/auto-reject-rules/${id}`, {
+    method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
+  }),
+  toggleAutoRejectRule: (id) => apiCall(`/api/attendance/regularization/settings/auto-reject-rules/${id}/toggle`, {
+    method: 'POST',
+  }),
+  deleteAutoRejectRule: (id) => apiCall(`/api/attendance/regularization/settings/auto-reject-rules/${id}`, { method: 'DELETE' }),
+
+  // Statistics
+  getStatistics: () => apiCall('/api/attendance/regularization/settings/statistics'),
+
+  // Bulk processing
+  bulkProcess: (data) => apiCall('/api/attendance/regularization/bulk-process', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(data),
+  }),
+  getBulkBatch: (batchId) => apiCall(`/api/attendance/regularization/bulk-process/${batchId}`),
+
+  // Reports (server streams the file back directly — build a URL for window.open,
+  // same pattern used elsewhere for file-download endpoints)
+  getReportDownloadUrl: (fromDate, toDate, requestType, format) => {
+    const q = new URLSearchParams();
+    q.append('from_date', fromDate);
+    q.append('to_date', toDate);
+    if (requestType && requestType.toLowerCase() !== 'all' && requestType !== '') q.append('request_type', requestType);
+    q.append('format', format || 'PDF');
+    return `${BASE_URL}/api/attendance/regularization/reports/generate?${q.toString()}`;
+  },
+};
+
+// ==========================================
 // EMPLOYEE MANAGEMENT APIs
 // ==========================================
 export const employeeAPI = {
@@ -2695,6 +2757,7 @@ const apiServices = {
   adminAPI,
   employeeAPI,
   attendanceAPI,
+  regularizationAPI,
   payrollAPI,
   payrollReportsAPI,
   hrOpsAPI,

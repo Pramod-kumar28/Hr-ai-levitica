@@ -7,7 +7,8 @@ const RegularizationBulkModal = ({
   onClose,
   bulkForm,
   setBulkForm,
-  handleBulkProcess
+  handleBulkProcess,
+  isSubmitting = false
 }) => {
   return (
     <Modal
@@ -81,11 +82,12 @@ const RegularizationBulkModal = ({
           </button>
           <button
             type="button"
-            className="w-full sm:w-auto px-5 py-2.5 bg-blue-600 hover:bg-blue-700 text-white rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 shadow-sm shadow-blue-500/10"
+            disabled={isSubmitting}
+            className="w-full sm:w-auto px-5 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-60 disabled:cursor-not-allowed text-white rounded-xl text-sm font-semibold transition-all flex items-center justify-center gap-2 shadow-sm shadow-blue-500/10"
             onClick={handleBulkProcess}
           >
-            <Icon icon="heroicons:arrow-up-tray" className="w-4 h-4" />
-            Process Bulk
+            <Icon icon={isSubmitting ? "heroicons:arrow-path" : "heroicons:arrow-up-tray"} className={`w-4 h-4 ${isSubmitting ? "animate-spin" : ""}`} />
+            {isSubmitting ? "Processing..." : "Process Bulk"}
           </button>
         </div>
       </div>

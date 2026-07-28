@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Edit, Trash2 } from 'lucide-react';
 import { adminAPI } from "../../shared/utils/api";
 import { BASE_URL } from "../../shared/constants/api.config";
+import { API_ENDPOINTS } from "../../shared/constants/api.config";
 import { UserPlus } from "lucide-react";
 
 const SuperAdminPanel = () => {
@@ -19,8 +20,25 @@ const SuperAdminPanel = () => {
     username: '',
     email: '',
     role: 'recruiter',
-    is_active: true
+    is_active: true,
+    tenant_id: ''
   });
+  const [tenants, setTenants] = useState([]);
+
+  useEffect(() => {
+    const loadTenants = async () => {
+      try {
+        const res = await fetch(`${BASE_URL}${API_ENDPOINTS.SUPER_ADMIN.TENANTS}`);
+        if (res.ok) {
+          const data = await res.json();
+          setTenants(Array.isArray(data) ? data : []);
+        }
+      } catch (err) {
+        console.error('Failed to load tenants', err);
+      }
+    };
+    loadTenants();
+  }, []);
 
   // Fetch users and summary
   const fetchData = async () => {
@@ -98,7 +116,8 @@ const SuperAdminPanel = () => {
       username: '',
       email: '',
       role: 'recruiter',
-      is_active: true
+      is_active: true,
+      tenant_id: ''
     });
     setShowModal(true);
   };
@@ -111,7 +130,8 @@ const SuperAdminPanel = () => {
       username: user.username || '',
       email: user.email || '',
       role: user.role || 'recruiter',
-      is_active: user.is_active !== undefined ? user.is_active : true
+      is_active: user.is_active !== undefined ? user.is_active : true,
+      tenant_id: user.tenant_id || ''
     });
     setShowModal(true);
   };
@@ -138,7 +158,10 @@ const SuperAdminPanel = () => {
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${token}`
         },
-        body: JSON.stringify(formData)
+        body: JSON.stringify({
+          ...formData,
+          tenant_id: formData.tenant_id === '' ? null : Number(formData.tenant_id)
+        })
       });
 
       if (response.ok) {
@@ -484,6 +507,7 @@ const SuperAdminPanel = () => {
                     >
                       <option value="recruiter">Recruiter</option>
                       <option value="admin">Admin</option>
+                      <option value="hr_admin">HR Admin</option>
                       <option value="company">Company</option>
                       <option value="candidate">Candidate</option>
                       {editingUser && editingUser.role?.toLowerCase() === 'superadmin' && (
@@ -491,6 +515,30 @@ const SuperAdminPanel = () => {
                       )}
                     </select>
                   </div>
+                  {['admin', 'hr_admin', 'recruiter', 'company'].includes(formData.role) && (
+                    <div className="col-md-6">
+                      <label className="form-label fw-semibold">
+                        Company {['admin', 'hr_admin'].includes(formData.role) && <span className="text-danger">*</span>}
+                      </label>
+                      <select
+                        className="form-select"
+                        value={formData.tenant_id}
+                        onChange={(e) => handleInputChange('tenant_id', e.target.value)}
+                        required={['admin', 'hr_admin'].includes(formData.role)}
+                      >
+                        <option value="">Select a company...</option>
+                        {tenants.map((t) => (
+                          <option key={t.id} value={t.id}>
+                            {t.tenant_name || t.name}
+                          </option>
+                        ))}
+                      </select>
+                      <small className="text-muted">
+                        Which company this user belongs to — required for HR Admin/Admin to manage
+                        branches, Company Settings, and employees.
+                      </small>
+                    </div>
+                  )}
                   <div className="col-md-12">
                     <div className="form-check">
                       <input

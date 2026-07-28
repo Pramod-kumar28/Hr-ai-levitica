@@ -39,11 +39,6 @@ const RegularizationApprovalModal = ({
           <p className="text-sm text-slate-700">{selectedRequest?.reason}</p>
         </div>
 
-        <div>
-          <p className="text-xs text-slate-500">Remarks</p>
-          <p className="text-sm text-slate-700">{selectedRequest?.remarks}</p>
-        </div>
-
         {selectedRequest?.status === "pending" && (
           <>
             <div>
@@ -79,6 +74,9 @@ const RegularizationApprovalModal = ({
               {selectedRequest?.status === "approved" ? `Approved by ${selectedRequest?.approvedBy || "Manager"}` :
                 `Rejected by ${selectedRequest?.rejectedBy || "Manager"}`}
             </p>
+            {selectedRequest?.reviewComments && (
+              <p className="text-xs text-slate-500 mt-2 italic">"{selectedRequest.reviewComments}"</p>
+            )}
           </div>
         )}
 
