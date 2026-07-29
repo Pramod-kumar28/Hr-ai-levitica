@@ -1,5 +1,6 @@
 // API Utility for Backend Communication
 import { BASE_URL } from "../constants/api.config";
+import { getSelectedBranchId } from "./branch";
 
 // Get JWT token from localStorage
 const getToken = () => localStorage.getItem('token');
@@ -7,12 +8,18 @@ const getToken = () => localStorage.getItem('token');
 // Generic API call function with error handling
 export const apiCall = async (endpoint, options = {}) => {
   const token = getToken();
+  const branchId = getSelectedBranchId();
   
   const config = {
     ...options,
     headers: {
       ...options.headers,
-      ...(token && { 'Authorization': `Bearer ${token}` })
+      ...(token && { 'Authorization': `Bearer ${token}` }),
+      // Optional branch filter for the 'company'/'superadmin' branch
+      // selector. Backend ignores this header entirely for 'admin' users —
+      // they're always forced to their own branch server-side regardless
+      // of what's sent here (see get_current_location_id).
+      ...(branchId && { 'X-Location-Id': branchId })
     }
   };
 
@@ -859,6 +866,16 @@ export const resumeAPI = {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ resume_id: resumeId, job_id: jobId })
     })
+};
+
+// ==========================================
+// COMPANY LOCATIONS (BRANCHES) API
+// ==========================================
+export const locationAPI = {
+  // For 'company'/'superadmin' this returns every branch; for a branch-
+  // locked 'admin' the backend already filters this down to just their own
+  // branch (see routers/Company_Settings/location.py: list_locations).
+  list: () => apiCall('/company-settings/locations/')
 };
 
 // ==========================================
@@ -2739,6 +2756,7 @@ export const reportsPayrollAPI = {
 
 const apiServices = {
   authAPI,
+  locationAPI,
   jobAPI,
   assetsAPI,
   candidateAPI,

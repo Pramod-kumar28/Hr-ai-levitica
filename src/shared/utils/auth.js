@@ -1,4 +1,5 @@
 // Authentication and Authorization Utilities
+import { clearSelectedBranch } from './branch';
 
 // Get JWT token
 export const getToken = () => {
@@ -57,6 +58,7 @@ export const logout = () => {
   localStorage.removeItem('refreshToken');
   localStorage.removeItem('userRole');
   localStorage.removeItem('userEmail');
+  clearSelectedBranch();
 };
 
 // Check super admin access
