@@ -5,6 +5,13 @@ import { toast, ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import { BASE_URL, API_ENDPOINTS } from '../../shared/constants/api.config';
 
+// Tenant management endpoints now require a superadmin-authenticated
+// request (previously wide open with no auth check at all).
+const authHeader = () => {
+  const token = localStorage.getItem('token');
+  return token ? { Authorization: `Bearer ${token}` } : {};
+};
+
 const MultiTenantSetup = () => {
   // ---------------- TENANTS DATA (loaded from the real backend) ----------------
   // The backend's Tenant row only has tenant_name/domain/contact_*/plan/
@@ -46,7 +53,9 @@ const MultiTenantSetup = () => {
     setTenantsLoading(true);
     setTenantsError(null);
     try {
-      const res = await fetch(`${BASE_URL}${API_ENDPOINTS.SUPER_ADMIN.TENANTS}`);
+      const res = await fetch(`${BASE_URL}${API_ENDPOINTS.SUPER_ADMIN.TENANTS}`, {
+        headers: authHeader(),
+      });
       if (!res.ok) throw new Error('Failed to load tenants');
       const data = await res.json();
       setTenants(data.map(mapBackendTenant));
@@ -192,7 +201,7 @@ const MultiTenantSetup = () => {
 
       const res = await fetch(`${BASE_URL}${API_ENDPOINTS.SUPER_ADMIN.TENANTS}`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeader() },
         body: JSON.stringify(payload),
       });
       if (!res.ok) {
@@ -248,6 +257,7 @@ const MultiTenantSetup = () => {
     try {
       const res = await fetch(`${BASE_URL}${API_ENDPOINTS.SUPER_ADMIN.TENANT(selectedTenant.id)}`, {
         method: 'DELETE',
+        headers: authHeader(),
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -296,7 +306,7 @@ const MultiTenantSetup = () => {
 
       const res = await fetch(`${BASE_URL}${API_ENDPOINTS.SUPER_ADMIN.TENANT(selectedTenant.id)}`, {
         method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...authHeader() },
         body: JSON.stringify(payload),
       });
       if (!res.ok) {

@@ -31,7 +31,10 @@ const SuperAdminPanel = () => {
   useEffect(() => {
     const loadTenants = async () => {
       try {
-        const res = await fetch(`${BASE_URL}${API_ENDPOINTS.SUPER_ADMIN.TENANTS}`);
+        const token = localStorage.getItem('token');
+        const res = await fetch(`${BASE_URL}${API_ENDPOINTS.SUPER_ADMIN.TENANTS}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
         if (res.ok) {
           const data = await res.json();
           setTenants(Array.isArray(data) ? data : []);
