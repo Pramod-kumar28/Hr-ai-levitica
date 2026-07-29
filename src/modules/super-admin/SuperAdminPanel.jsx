@@ -21,9 +21,12 @@ const SuperAdminPanel = () => {
     email: '',
     role: 'recruiter',
     is_active: true,
-    tenant_id: ''
+    tenant_id: '',
+    location_id: ''
   });
   const [tenants, setTenants] = useState([]);
+  const [branches, setBranches] = useState([]);
+  const [branchesLoading, setBranchesLoading] = useState(false);
 
   useEffect(() => {
     const loadTenants = async () => {
@@ -39,6 +42,35 @@ const SuperAdminPanel = () => {
     };
     loadTenants();
   }, []);
+
+  // Load branches for the selected company whenever it changes (only
+  // relevant when role is "admin" — branch-scoped admin).
+  useEffect(() => {
+    if (formData.role !== 'admin' || !formData.tenant_id) {
+      setBranches([]);
+      return;
+    }
+    const loadBranches = async () => {
+      setBranchesLoading(true);
+      try {
+        const token = localStorage.getItem('token');
+        const res = await fetch(`${BASE_URL}${API_ENDPOINTS.SUPER_ADMIN.TENANT_LOCATIONS(formData.tenant_id)}`, {
+          headers: token ? { Authorization: `Bearer ${token}` } : {}
+        });
+        if (res.ok) {
+          setBranches(await res.json());
+        } else {
+          setBranches([]);
+        }
+      } catch (err) {
+        console.error('Failed to load branches', err);
+        setBranches([]);
+      } finally {
+        setBranchesLoading(false);
+      }
+    };
+    loadBranches();
+  }, [formData.role, formData.tenant_id]);
 
   // Fetch users and summary
   const fetchData = async () => {
@@ -117,7 +149,8 @@ const SuperAdminPanel = () => {
       email: '',
       role: 'recruiter',
       is_active: true,
-      tenant_id: ''
+      tenant_id: '',
+      location_id: ''
     });
     setShowModal(true);
   };
@@ -131,7 +164,8 @@ const SuperAdminPanel = () => {
       email: user.email || '',
       role: user.role || 'recruiter',
       is_active: user.is_active !== undefined ? user.is_active : true,
-      tenant_id: user.tenant_id || ''
+      tenant_id: user.tenant_id || '',
+      location_id: user.location_id || ''
     });
     setShowModal(true);
   };
@@ -160,7 +194,8 @@ const SuperAdminPanel = () => {
         },
         body: JSON.stringify({
           ...formData,
-          tenant_id: formData.tenant_id === '' ? null : Number(formData.tenant_id)
+          tenant_id: formData.tenant_id === '' ? null : Number(formData.tenant_id),
+          location_id: formData.location_id === '' ? null : Number(formData.location_id)
         })
       });
 
@@ -537,6 +572,30 @@ const SuperAdminPanel = () => {
                         Which company this user belongs to — required for HR Admin/Admin to manage
                         branches, Company Settings, and employees.
                       </small>
+                    </div>
+                  )}
+                  {formData.role === 'admin' && formData.tenant_id && (
+                    <div className="col-md-6">
+                      <label className="form-label fw-semibold">Branch (optional)</label>
+                      <select
+                        className="form-select"
+                        value={formData.location_id}
+                        onChange={(e) => handleInputChange('location_id', e.target.value)}
+                        disabled={branchesLoading}
+                      >
+                        <option value="">Whole company (all branches)</option>
+                        {branches.map((b) => (
+                          <option key={b.id} value={b.id}>
+                            {b.name}{b.is_default ? ' (Default)' : ''}
+                          </option>
+                        ))}
+                      </select>
+                      <small className="text-muted">
+                        Leave as "Whole company" for a company-wide admin. Pick a branch to
+                        restrict this admin to only that branch's Recruitment, CRM, HR
+                        Management, Productivity, and Company Settings data.
+                      </small>
+                      {branchesLoading && <small className="text-muted d-block">Loading branches…</small>}
                     </div>
                   )}
                   <div className="col-md-12">
