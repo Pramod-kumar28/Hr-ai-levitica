@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { HiOutlineRocketLaunch, HiOutlineFolderOpen } from 'react-icons/hi2';
 import DashboardLayoutBase from "../../shared/components/DashboardLayoutBase";
+import { getUserRole } from "../../shared/utils/auth";
 import {
   HiOutlineHome,
   HiOutlineClipboardDocumentList,
@@ -135,23 +136,26 @@ const RecruiterDashboardLayout = ({ children, internalNav = false, activeTab, on
     }
   };
 
-  const sidebarItems = [
+  const allSidebarItems = [
     
     {
       type: 'link',
       to: '/dashboard',
       tabKey: 'dashboard',
+      section: 'dashboard',
       label: 'Dashboard',
       icon: HiOutlineHome
     },
     {
       type: 'title',
-      label: 'Recruitment'
+      label: 'Recruitment',
+      section: 'recruitment'
     },
     {
       type: 'link',
       to: '/jobslist',
       tabKey: 'jobs',
+      section: 'recruitment',
       label: 'Jobs',
       icon: HiOutlineClipboardDocumentList,
       isParent: true
@@ -160,6 +164,7 @@ const RecruiterDashboardLayout = ({ children, internalNav = false, activeTab, on
       type: 'link',
       to: '/candidates',
       tabKey: 'candidates',
+      section: 'recruitment',
       label: 'Candidates',
       icon: HiOutlineUsers
     },
@@ -167,6 +172,7 @@ const RecruiterDashboardLayout = ({ children, internalNav = false, activeTab, on
       type: 'link',
       to: '/resume-screening',
       tabKey: 'resume-screening',
+      section: 'recruitment',
       label: 'AI Resume Screening',
       icon: HiOutlineDocumentMagnifyingGlass
     },
@@ -174,6 +180,7 @@ const RecruiterDashboardLayout = ({ children, internalNav = false, activeTab, on
       type: 'link',
       to: '/pipeline/view',
       tabKey: 'pipeline',
+      section: 'recruitment',
       label: 'Pipeline View',
       icon: HiOutlineQueueList
     },
@@ -181,6 +188,7 @@ const RecruiterDashboardLayout = ({ children, internalNav = false, activeTab, on
       type: 'link',
       to: '/analytics/recruiter-performance',
       tabKey: 'recruiter-performance',
+      section: 'recruitment',
       label: 'Analytics',
       icon: HiOutlineChartBarSquare
     },
@@ -188,6 +196,7 @@ const RecruiterDashboardLayout = ({ children, internalNav = false, activeTab, on
       type: 'dropdown',
       label: 'Assessment',
       icon: HiOutlineBriefcase,
+      section: 'recruitment',
       items: [
         { to: '/recruiter/assessments-library', tabKey: 'assessments-library', label: 'Assessments Library', icon: HiOutlineDocumentText },
         { to: '/recruiter/assign-assessment', tabKey: 'assign-assessment', label: 'Assign Assessment', icon: HiOutlineUserPlus },
@@ -202,12 +211,14 @@ const RecruiterDashboardLayout = ({ children, internalNav = false, activeTab, on
 
     {
       type: 'title',
-      label: 'CRM'
+      label: 'CRM',
+      section: 'crm'
     },
     {
       type: 'dropdown',
       label: 'CRM',
       icon: HiOutlineBuildingOffice2,
+      section: 'crm',
       items: [
         { to: '/crm/contacts', tabKey: 'crm-contacts', label: 'Contacts', icon: HiOutlineBuildingOffice2 },
         { to: '/crm/companies', tabKey: 'crm-companies', label: 'Companies', icon: HiOutlineLink },
@@ -220,12 +231,14 @@ const RecruiterDashboardLayout = ({ children, internalNav = false, activeTab, on
     },
     {
       type: 'title',
-      label: 'HR Management'
+      label: 'HR Management',
+      section: 'hr'
     },
     {
       type: 'link',
       to: '/hrms/all-employees',
       tabKey: 'all-employees',
+      section: 'hr',
       label: 'All Employees',
       icon: HiOutlineUserGroup
     },
@@ -233,6 +246,7 @@ const RecruiterDashboardLayout = ({ children, internalNav = false, activeTab, on
       type: 'dropdown',
       label: 'Attendance',
       icon: HiOutlineClock,
+      section: 'hr',
       items: [
         { to: '/hrms/attendance/daily', tabKey: 'daily-attendance', label: 'Daily Attendance', icon: HiOutlineCalendar },
         { to: '/hrms/attendance/capture', tabKey: 'attendance-capture', label: 'Attendance Capture', icon: HiOutlineCalendar },
@@ -251,6 +265,7 @@ const RecruiterDashboardLayout = ({ children, internalNav = false, activeTab, on
     {
       type: 'dropdown',
       label: 'Onboarding & Pre-Joining',
+      section: 'hr',
       icon: HiOutlineUserPlus,
       items: [
         { to: '/onboarding/background-verification', tabKey: 'bg-verify', label: 'Background Verification', icon: HiOutlineShieldCheck },
@@ -266,6 +281,7 @@ const RecruiterDashboardLayout = ({ children, internalNav = false, activeTab, on
       type: 'dropdown',
       label: 'Employee Management',
       icon: HiOutlineUsers,
+      section: 'hr',
       items: [
         { to: '/employee/master', tabKey: 'emp-master', label: 'Employee Master Data', icon: HiOutlineUserCircle },
         { to: '/employee/hierarchy', tabKey: 'emp-hierarchy', label: 'Org Hierarchy', icon: HiOutlineRectangleStack },
@@ -277,6 +293,7 @@ const RecruiterDashboardLayout = ({ children, internalNav = false, activeTab, on
     {
       type: 'dropdown',
       label: 'Payroll Management',
+      section: 'hr',
       icon: HiOutlineBanknotes,
       items: [
         { to: '/payroll/structure', tabKey: 'payroll-struct', label: 'Salary Structure', icon: HiOutlineCog6Tooth },
@@ -294,6 +311,7 @@ const RecruiterDashboardLayout = ({ children, internalNav = false, activeTab, on
     {
       type: 'dropdown',
       label: 'HR Operations',
+      section: 'hr',
       icon: HiOutlineBriefcase,
       items: [
         { to: '/hr-ops/confirmation', tabKey: 'ops-confirm', label: 'Employee Confirmation', icon: HiOutlineCheckBadge },
@@ -309,6 +327,7 @@ const RecruiterDashboardLayout = ({ children, internalNav = false, activeTab, on
     {
       type: 'dropdown',
       label: 'Forms & Workflows',
+      section: 'hr',
       icon: HiOutlineArrowPath,
       items: [
         { to: '/forms/builder', tabKey: 'form-builder', label: 'Custom Form Builder', icon: HiOutlinePencilSquare },
@@ -321,6 +340,7 @@ const RecruiterDashboardLayout = ({ children, internalNav = false, activeTab, on
     {
       type: 'dropdown',
       label: 'Reports & Analytics',
+      section: 'hr',
       icon: HiOutlineChartBar,
       items: [
         { to: '/reports/employee', tabKey: 'rep-emp', label: 'Employee Reports', icon: HiOutlineUserGroup },
@@ -337,17 +357,20 @@ const RecruiterDashboardLayout = ({ children, internalNav = false, activeTab, on
       type: 'link',
       to: '/Tenant/Company',
       tabKey: 'company-settings',
+      section: 'company-settings',
       label: 'Company Settings',
       icon: HiOutlineCog6Tooth
     },
     {
       type: 'title',
-      label: 'Productivity'
+      label: 'Productivity',
+      section: 'productivity'
     },
     {
       type: 'dropdown',
       label: 'Productivity',
       icon: HiOutlineRocketLaunch,
+      section: 'productivity',
       items: [
         { to: '/productivity/dashboard', tabKey: 'productivity', label: 'Dashboard', icon: HiOutlineRocketLaunch },
         { to: '/productivity/tasks', tabKey: 'prod-tasks', label: 'Task Tracker', icon: HiOutlineClipboardDocumentList },
@@ -358,16 +381,45 @@ const RecruiterDashboardLayout = ({ children, internalNav = false, activeTab, on
     },
     {
       type: 'title',
-      label: 'Quick Actions'
+      label: 'Quick Actions',
+      section: 'quick-actions'
     },
     {
       type: 'link',
       to: '/jobs/new',
       tabKey: 'create-job',
+      section: 'quick-actions',
       label: 'Create Job',
       icon: HiOutlinePlus
     }
   ];
+
+  // Which sidebar sections each role is allowed to see.
+  // 'dashboard' is always included for every role.
+  const ROLE_SECTIONS = {
+    recruiter: ['dashboard', 'recruitment', 'quick-actions'],
+    hr_admin: ['dashboard', 'hr'],
+    admin: ['dashboard', 'recruitment', 'crm', 'hr', 'productivity', 'company-settings', 'quick-actions'],
+    company: ['dashboard', 'recruitment', 'crm', 'hr', 'productivity', 'company-settings', 'quick-actions'],
+    superadmin: ['dashboard', 'recruitment', 'crm', 'hr', 'productivity', 'company-settings', 'quick-actions'],
+  };
+
+  const userRole = getUserRole();
+  // Unknown/missing role -> safest default is recruiter-level access only.
+  const allowedSections = ROLE_SECTIONS[userRole] || ROLE_SECTIONS.recruiter;
+
+  // Keep an item if its section is allowed. For 'title' items, only keep
+  // them if at least one non-title item in that same section is also kept
+  // (otherwise you get an empty section header with nothing under it).
+  const sidebarItems = allSidebarItems.filter((item) => {
+    if (!allowedSections.includes(item.section)) return false;
+    if (item.type === 'title') {
+      return allSidebarItems.some(
+        (other) => other.section === item.section && other.type !== 'title' && allowedSections.includes(other.section)
+      );
+    }
+    return true;
+  });
 
   const topbarRightContent = (
     <div className="flex items-center gap-3.5">

@@ -40,6 +40,11 @@ export const isCompany = () => {
   return localStorage.getItem('userRole') === 'company';
 };
 
+// Check if user is HR admin
+export const isHrAdmin = () => {
+  return localStorage.getItem('userRole') === 'hr_admin';
+};
+
 // Check if user is regular user
 export const isRegularUser = () => {
   const role = getUserRole();
@@ -85,5 +90,3 @@ export const checkRecruiterAccess = (navigate) => {
   }
   return true;
 };
-
-
