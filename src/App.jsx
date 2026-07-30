@@ -13,7 +13,7 @@ import RolesPermissions from './modules/super-admin/RolesPermissions';
 import CompanySettings from './modules/super-admin/CompanySettings';
 import Authentication from './modules/super-admin/Authentication';
 import Candidates from './modules/ai-recruitment/candidates/Candidates';
-import DashboardOverview from './modules/ai-recruitment/dashboard/DashboardOverview';
+import DashboardRouter from './app/layouts/DashboardRouter';
 import PipelineOverview from './modules/ai-recruitment/analytics/PipelineOverview';
 import JobAnalytics from './modules/ai-recruitment/analytics/JobAnalytics';
 import RecruiterDashboardLayout from './app/layouts/RecruiterDashboardLayout';
@@ -189,7 +189,7 @@ const App = () => {
         element={
           <ProtectedRoute>
             <RecruiterDashboardLayout>
-              <DashboardOverview />
+              <DashboardRouter />
             </RecruiterDashboardLayout>
           </ProtectedRoute>
         }

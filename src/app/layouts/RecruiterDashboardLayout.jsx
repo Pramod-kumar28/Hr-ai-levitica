@@ -2,7 +2,6 @@ import { useEffect, useState, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { HiOutlineRocketLaunch, HiOutlineFolderOpen } from 'react-icons/hi2';
 import DashboardLayoutBase from "../../shared/components/DashboardLayoutBase";
-import BranchSelector from "../../shared/components/BranchSelector";
 import { getUserRole } from "../../shared/utils/auth";
 import {
   HiOutlineHome,
@@ -409,6 +408,15 @@ const RecruiterDashboardLayout = ({ children, internalNav = false, activeTab, on
   // Unknown/missing role -> safest default is recruiter-level access only.
   const allowedSections = ROLE_SECTIONS[userRole] || ROLE_SECTIONS.recruiter;
 
+  const PANEL_LABELS = {
+    recruiter: { title: 'Recruiter Panel', subtitle: 'Talent & Hiring' },
+    hr_admin: { title: 'HR Admin Panel', subtitle: 'HR Management System' },
+    admin: { title: 'Admin Panel', subtitle: 'Branch Administration' },
+    company: { title: 'Company Panel', subtitle: 'All Branches' },
+    superadmin: { title: 'Super Admin Panel', subtitle: 'System-wide Access' },
+  };
+  const panelLabels = PANEL_LABELS[userRole] || PANEL_LABELS.recruiter;
+
   // Keep an item if its section is allowed. For 'title' items, only keep
   // them if at least one non-title item in that same section is also kept
   // (otherwise you get an empty section header with nothing under it).
@@ -486,8 +494,8 @@ const RecruiterDashboardLayout = ({ children, internalNav = false, activeTab, on
         {profileOpen && (
           <div className="absolute right-0 mt-2.5 w-56 bg-white rounded-xl shadow-lg border border-slate-200/70 overflow-hidden py-1.5 z-50 animate-slide-up">
             <div className="py-2.5 px-4 bg-primary-50 border-b border-primary-100/60 flex flex-col">
-              <h6 className="text-xs text-slate-800 font-bold mb-0.5">Recruiter</h6>
-              <span className="text-[10px] text-slate-500 font-medium">Talent & Hiring</span>
+              <h6 className="text-xs text-slate-800 font-bold mb-0.5">{panelLabels.title.replace(' Panel', '')}</h6>
+              <span className="text-[10px] text-slate-500 font-medium">{panelLabels.subtitle}</span>
             </div>
             <div className="py-1">
               <Link
@@ -520,6 +528,8 @@ const RecruiterDashboardLayout = ({ children, internalNav = false, activeTab, on
       sidebarItems={sidebarItems}
       companyLogo={companyLogo}
       logoLink="/dashboard"
+      panelTitle={panelLabels.title}
+      panelSubtitle={panelLabels.subtitle}
       topbarLeftContent={null}
       topbarRightContent={topbarRightContent}
       activeTab={internalNav ? activeTab : null}
