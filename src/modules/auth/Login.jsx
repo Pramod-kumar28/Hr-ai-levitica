@@ -53,6 +53,8 @@ const Login = () => {
 
         let resolvedRole = data.role;
         let resolvedEmail = data.email;
+        let resolvedRequiresPasswordChange = data.requires_password_change;
+        let resolvedProfileCompleted = data.profile_completed;
 
         // Fallback for older backend payloads: fetch current user to resolve role routing.
         if ((!resolvedRole || !resolvedEmail) && data.access_token) {
@@ -66,6 +68,12 @@ const Login = () => {
               const meData = await meResponse.json();
               resolvedRole = resolvedRole || meData.role;
               resolvedEmail = resolvedEmail || meData.email;
+              if (resolvedRequiresPasswordChange === undefined) {
+                resolvedRequiresPasswordChange = meData.requires_password_change;
+              }
+              if (resolvedProfileCompleted === undefined) {
+                resolvedProfileCompleted = meData.profile_completed;
+              }
             }
           } catch (meError) {
             console.error('Failed to fetch current user after login:', meError);
@@ -79,6 +87,21 @@ const Login = () => {
 
         localStorage.setItem('userRole', resolvedRole);
         localStorage.setItem('userEmail', resolvedEmail || formData.email);
+
+        if (resolvedRequiresPasswordChange) {
+          localStorage.setItem('requiresPasswordChange', 'true');
+        } else {
+          localStorage.removeItem('requiresPasswordChange');
+        }
+
+        // Only the employee role's dashboard is gated on this — for every
+        // other role resolvedProfileCompleted is either true or undefined,
+        // both of which correctly result in no gating below.
+        if (resolvedRole === 'employee' && resolvedProfileCompleted === false) {
+          localStorage.setItem('needsProfileCompletion', 'true');
+        } else {
+          localStorage.removeItem('needsProfileCompletion');
+        }
  
         if (rememberMe) {
           localStorage.setItem('rememberMe', 'true');
@@ -86,7 +109,11 @@ const Login = () => {
           localStorage.removeItem('rememberMe');
         }
  
-        if (resolvedRole === 'superadmin') {
+        if (resolvedRequiresPasswordChange) {
+          navigate('/change-password');
+        } else if (resolvedRole === 'employee' && resolvedProfileCompleted === false) {
+          navigate('/employee/complete-profile');
+        } else if (resolvedRole === 'superadmin') {
           navigate('/super-admin');
         } else {
           navigate('/dashboard');

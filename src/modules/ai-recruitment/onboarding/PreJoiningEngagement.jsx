@@ -63,6 +63,7 @@ export default function OnboardingFormsTable() {
       case "SENT": return "Sent";
       case "SUBMITTED": return "Pending";
       case "APPROVED": return "Approved";
+      case "CONVERTED": return "Converted";
       case "REJECTED": return "Rejected";
       default: return status;
     }
@@ -334,6 +335,31 @@ export default function OnboardingFormsTable() {
     }
   };
 
+  const handleConvertToEmployee = async (formId) => {
+    const form = forms.find((f) => f.id === formId);
+    if (!form) return;
+
+    if (!window.confirm(
+      `Convert ${form.candidate} to an employee? This creates their Employee ID and login account, and emails them their credentials.`
+    )) return;
+
+    try {
+      const result = await apiCall(API_ENDPOINTS.ONBOARDING_CANDIDATE_INVITES.CONVERT_TO_EMPLOYEE(formId), {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({}),
+      });
+      await loadCandidates();
+      alert(
+        result.email_sent
+          ? `${form.candidate} is now Employee ${result.employee_code}. Login credentials were emailed to ${result.login_email}.`
+          : `${form.candidate} is now Employee ${result.employee_code}. Email delivery failed — share these credentials manually:\n\nLogin: ${result.login_email}\nTemporary password: ${result.temporary_password}`
+      );
+    } catch (err) {
+      alert(`Could not convert this candidate to an employee: ${err.message}`);
+    }
+  };
+
   const handleDelete = (formId) => {
     const form = forms.find((f) => f.id === formId);
     if (!form) return;
@@ -588,6 +614,7 @@ export default function OnboardingFormsTable() {
                       </td>
                       <td className="px-3 py-2 align-middle">
                         <span className={`inline-block px-3.5 py-1 rounded-full text-xs font-medium text-white ${row.status === "Approved" ? "bg-emerald-500"
+                          : row.status === "Converted" ? "bg-purple-500"
                           : row.status === "Rejected" ? "bg-red-500"
                             : row.status === "Pending" ? "bg-amber-500"
                               : "bg-blue-500"}`}>
@@ -600,8 +627,8 @@ export default function OnboardingFormsTable() {
                             <Icon icon="heroicons:pencil" className="w-4 h-4" />
                           </button>
                           {row.status === "Approved" ? (
-                            <button onClick={() => handleApprove(row.id)} title="Approve" className="p-1.5 rounded border border-emerald-400 text-emerald-600 hover:bg-emerald-50 transition-colors">
-                              <Icon icon="heroicons:check" className="w-4 h-4" />
+                            <button onClick={() => handleConvertToEmployee(row.id)} title="Convert to Employee" className="p-1.5 rounded border border-purple-400 text-purple-600 hover:bg-purple-50 transition-colors">
+                              <Icon icon="heroicons:user-plus" className="w-4 h-4" />
                             </button>
                           ) : row.status === "Rejected" ? (
                             <button onClick={() => handleReject(row.id)} title="Reject" className="p-1.5 rounded border border-amber-400 text-amber-600 hover:bg-amber-50 transition-colors">

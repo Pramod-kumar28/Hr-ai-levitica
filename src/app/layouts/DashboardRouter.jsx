@@ -4,6 +4,7 @@ import DashboardOverview from '../../modules/ai-recruitment/dashboard/DashboardO
 import AdminDashboardOverview from '../../modules/admin/dashboard/AdminDashboardOverview';
 import HrAdminDashboardOverview from '../../modules/hrms/dashboard/HrAdminDashboardOverview';
 import CompanyDashboardOverview from '../../modules/company/dashboard/CompanyDashboardOverview';
+import EmployeeSelfService from '../../modules/hrms/employees/EmployeeSelfService';
 
 // Renders a genuinely different dashboard component per role, rather than
 // one shared component with the same recruitment-only stats for everyone.
@@ -12,6 +13,8 @@ const DashboardRouter = () => {
   const role = getUserRole();
 
   switch (role) {
+    case 'employee':
+      return <EmployeeSelfService />;
     case 'hr_admin':
       return <HrAdminDashboardOverview />;
     case 'admin':

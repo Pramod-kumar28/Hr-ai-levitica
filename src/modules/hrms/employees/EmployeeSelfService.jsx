@@ -3,6 +3,7 @@ import { Icon } from '@iconify/react';
 import { toast, ToastContainer } from 'react-toastify';
 import "react-toastify/dist/ReactToastify.css";
 import StatCard from '../../../shared/components/StatCard';
+import { employeeSelfServiceAPI, announcementsAPI } from '../../../shared/utils/api';
 import ProfileModal from "../modal/ProfileModal";
 import RequestModal from "../modal/RequestModal";
 import MessageModal from "../modal/MessageModal";
@@ -119,52 +120,163 @@ const EmployeeSelfService = () => {
     loadInitialData();
   }, []);
 
-  const loadInitialData = () => {
-
-    setCurrentUser({
-      id: '',
-      name: '',
-      email: '',
-      phone: '',
-      department: '',
-      position: '',
-      location: '',
-      startDate: '',
-      status: '',
-      manager: '',
-      employmentType: '',
-      salary: 0
-    });
-    setRequests([]);
-    setMessages([]);
-    setTickets([]);
-    setPayslips([]);
-    setAttendanceRecords([]);
-    setDocuments([]);
-    setDirectory([]);
-    setUpcomingHolidays([]);
-    setBirthdays([]);
-    setAnniversaries([]);
-    setAnnouncements([]);
+  const loadInitialData = async () => {
+    setIsLoading(true);
+    setError(null);
     setLeaveBalance({ annual: 0, casual: 0, sick: 0, taken: 0, total: 0 });
-    setJobHistory([]);
-    setReportingHierarchy([]);
-    setPolicyDocuments([]);
-    setFormsSurveys([]);
-    setTeamCalendar([]);
-    setNotifications([]);
-    setProfileForm({
-      phone: '',
-      address: '',
-      emergencyContact: { name: '', phone: '', relationship: '' }
-    });
-    setBankForm({
-      accountNumber: '',
-      bankName: '',
-      ifscCode: '',
-      accountType: 'Checking'
-    });
-    setIsLoading(false);
+    try {
+      const [profileRes, leavesRes, payslipsRes, attendanceRes, ticketsRes, documentsRes, announcementsRes] =
+        await Promise.allSettled([
+          employeeSelfServiceAPI.getProfile(),
+          employeeSelfServiceAPI.getLeaves(),
+          employeeSelfServiceAPI.getPayslips(),
+          employeeSelfServiceAPI.getAttendance(),
+          employeeSelfServiceAPI.getTickets(),
+          employeeSelfServiceAPI.getDocuments(),
+          announcementsAPI.list(),
+        ]);
+
+      if (profileRes.status === 'fulfilled') {
+        const p = profileRes.value || {};
+        setCurrentUser({
+          id: p.id ?? '',
+          name: `${p.firstName || ''} ${p.lastName || ''}`.trim() || p.employeeCode || '',
+          email: p.officialEmail || '',
+          phone: p.mobileNumber || '',
+          department: p.department || '',
+          position: p.designation || '',
+          location: p.location || p.workLocation || '',
+          startDate: p.joiningDate || '',
+          status: p.isActive ? 'active' : 'inactive',
+          manager: '',
+          employmentType: p.employmentType || '',
+          salary: 0,
+        });
+      } else {
+        setError(profileRes.reason?.message || 'Could not load your profile.');
+      }
+
+      // Requests tab reuses the generic {id, type, date, status, description}
+      // shape above for leave/asset/etc. requests — today the backend only
+      // has leave requests wired to self-service, so this only ever
+      // populates with leave-type entries. Approve/reject flows for other
+      // request types don't exist here yet.
+      if (leavesRes.status === 'fulfilled') {
+        const leaves = leavesRes.value?.leaves || [];
+        setRequests(
+          leaves.map((l) => ({
+            id: l.id,
+            type: 'leave',
+            date: l.startDate,
+            status: l.status,
+            description: `${l.leaveType} leave (${l.startDate} to ${l.endDate})${l.reason ? ` — ${l.reason}` : ''}`,
+          }))
+        );
+        setLeaveBalance((prev) => ({ ...prev, taken: leaves.length }));
+      }
+
+      if (payslipsRes.status === 'fulfilled') {
+        const slips = payslipsRes.value?.slips || [];
+        setPayslips(
+          slips.map((s) => ({
+            id: s.id,
+            month: `${s.month} ${s.year}`,
+            amount: s.netPay != null ? `₹${s.netPay}` : '—',
+            status: s.isPublished ? 'available' : 'pending',
+          }))
+        );
+      }
+
+      if (attendanceRes.status === 'fulfilled') {
+        const att = attendanceRes.value || {};
+        // getAttendance() hits GET .../attendance, which returns
+        // { month, year, summary: { present, absent, late, halfDay, total },
+        //   records: [{ date, status, checkIn, checkOut, remarks }] } —
+        // NOT the dashboard endpoint's { presentDaysThisMonth } shape.
+        // Map the real day-by-day records so the attendance table (which
+        // reads record.checkIn/checkOut/status per row) actually has data.
+        const records = Array.isArray(att.records) ? att.records : [];
+        setAttendanceRecords(
+          records.map((r) => ({
+            id: r.id,
+            date: r.date,
+            status: (r.status || '').toLowerCase().replace(' ', '-'), // "Half Day" -> "half-day"
+            checkIn: r.checkIn,
+            checkOut: r.checkOut,
+            hours: 0,
+            remarks: r.remarks,
+          }))
+        );
+      }
+
+      if (ticketsRes.status === 'fulfilled') {
+        const t = ticketsRes.value?.tickets || ticketsRes.value || [];
+        setTickets(
+          (Array.isArray(t) ? t : []).map((tk) => ({
+            id: tk.id,
+            subject: tk.subject,
+            status: tk.status,
+            description: tk.description,
+          }))
+        );
+      }
+
+      if (documentsRes.status === 'fulfilled') {
+        const docs = documentsRes.value?.documents || documentsRes.value || [];
+        setDocuments(
+          (Array.isArray(docs) ? docs : []).map((d, i) => ({
+            id: d.id ?? i,
+            name: d.name || d.document_name || 'Document',
+            type: d.type || d.document_type || '—',
+            date: d.date || d.uploaded_at || '',
+            size: d.size || '',
+          }))
+        );
+      }
+
+      if (announcementsRes.status === 'fulfilled') {
+        const items = Array.isArray(announcementsRes.value) ? announcementsRes.value : [];
+        setAnnouncements(
+          items.map((a) => ({
+            id: a.id,
+            title: a.title,
+            body: a.body,
+            date: a.created_at ? new Date(a.created_at).toLocaleDateString() : '',
+            category: 'Announcement',
+          }))
+        );
+      }
+
+      // Not wired — no backend endpoint exists for any of these yet:
+      // messages, directory, holidays, birthdays, anniversaries,
+      // jobHistory, reportingHierarchy, policyDocuments, formsSurveys,
+      // teamCalendar, notifications. Left as empty state (their existing
+      // default) rather than fabricating data.
+      setMessages([]);
+      setDirectory([]);
+      setUpcomingHolidays([]);
+      setBirthdays([]);
+      setAnniversaries([]);
+      setJobHistory([]);
+      setReportingHierarchy([]);
+      setPolicyDocuments([]);
+      setFormsSurveys([]);
+      setTeamCalendar([]);
+      setNotifications([]);
+      setProfileForm({
+        phone: '',
+        address: '',
+        emergencyContact: { name: '', phone: '', relationship: '' }
+      });
+      setBankForm({
+        accountNumber: '',
+        bankName: '',
+        ifscCode: '',
+        accountType: 'Checking'
+      });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const getStatusBadge = (status) => {
@@ -321,6 +433,26 @@ const EmployeeSelfService = () => {
     );
     setAttendanceRecords(updatedRecords);
     toast.success('Attendance regularized successfully');
+  };
+
+  const handleCheckIn = async () => {
+    try {
+      const res = await employeeSelfServiceAPI.checkIn();
+      toast.success(`Checked in at ${res.checkIn}`);
+      loadInitialData();
+    } catch (err) {
+      toast.error(err.message || 'Could not check in.');
+    }
+  };
+
+  const handleCheckOut = async () => {
+    try {
+      const res = await employeeSelfServiceAPI.checkOut();
+      toast.success(`Checked out at ${res.checkOut}`);
+      loadInitialData();
+    } catch (err) {
+      toast.error(err.message || 'Could not check out.');
+    }
   };
 
   const handleRefreshData = () => {
@@ -1048,6 +1180,18 @@ const EmployeeSelfService = () => {
         <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
           <h3 className="text-sm font-bold text-slate-800">Attendance Records</h3>
           <div className="flex flex-wrap items-center gap-2">
+            <button
+              onClick={handleCheckIn}
+              className="px-3 py-1.5 sm:px-4 sm:py-2 bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl text-xs sm:text-sm font-medium transition shadow-sm"
+            >
+              Check In
+            </button>
+            <button
+              onClick={handleCheckOut}
+              className="px-3 py-1.5 sm:px-4 sm:py-2 bg-slate-700 hover:bg-slate-800 text-white rounded-xl text-xs sm:text-sm font-medium transition shadow-sm"
+            >
+              Check Out
+            </button>
             {renderTopActions()}
           </div>
         </div>

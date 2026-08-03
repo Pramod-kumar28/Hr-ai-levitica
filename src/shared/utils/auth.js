@@ -21,6 +21,47 @@ export const getUserEmail = () => {
   return localStorage.getItem('userEmail');
 };
 
+// Whether the current login must change its password before doing anything
+// else (set right after "Convert to Employee" issues a temporary password,
+// or from any /api/auth/login-json /login /me response). Stored as a plain
+// string flag since localStorage only holds strings.
+export const requiresPasswordChange = () => {
+  return localStorage.getItem('requiresPasswordChange') === 'true';
+};
+
+export const setRequiresPasswordChange = (value) => {
+  if (value) {
+    localStorage.setItem('requiresPasswordChange', 'true');
+  } else {
+    localStorage.removeItem('requiresPasswordChange');
+  }
+};
+
+// Whether an 'employee' login still needs to complete their profile (bank
+// details + emergency contact + at least one document) before reaching the
+// full self-service dashboard — mirrors requiresPasswordChange, one step
+// later in the same "Convert to Employee" flow. Only ever meaningful for
+// role === 'employee'; other roles' backend responses default this to true
+// so it's always a no-op for them.
+export const needsProfileCompletion = () => {
+  return localStorage.getItem('needsProfileCompletion') === 'true';
+};
+
+export const setNeedsProfileCompletion = (value) => {
+  if (value) {
+    localStorage.setItem('needsProfileCompletion', 'true');
+  } else {
+    localStorage.removeItem('needsProfileCompletion');
+  }
+};
+
+// Check if user is employee (self-service login created via "Convert to
+// Employee", distinct from the recruiter/hr_admin/admin/company/superadmin
+// staff roles)
+export const isEmployee = () => {
+  return localStorage.getItem('userRole') === 'employee';
+};
+
 // Check if user is authenticated
 export const isAuthenticated = () => {
   return localStorage.getItem('token') !== null;
@@ -58,6 +99,8 @@ export const logout = () => {
   localStorage.removeItem('refreshToken');
   localStorage.removeItem('userRole');
   localStorage.removeItem('userEmail');
+  localStorage.removeItem('requiresPasswordChange');
+  localStorage.removeItem('needsProfileCompletion');
   clearSelectedBranch();
 };
 

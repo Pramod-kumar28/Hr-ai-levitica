@@ -18,6 +18,7 @@ export const API_ENDPOINTS = {
     CURRENT_USER: '/api/auth/me',
     FORGOT_PASSWORD: '/api/auth/forgot-password',
     RESET_PASSWORD: '/api/auth/reset-password',
+    CHANGE_PASSWORD: '/api/auth/change-password',
   },
   
   // Jobs (Note: create.py and update.py have double prefix, others have single)
@@ -196,6 +197,7 @@ export const API_ENDPOINTS = {
     UPDATE: (id) => `/api/onboarding-forms/candidates/${id}`,
     APPROVE: (id) => `/api/onboarding-forms/candidates/${id}/approve`,
     REJECT: (id) => `/api/onboarding-forms/candidates/${id}/reject`,
+    CONVERT_TO_EMPLOYEE: (id) => `/api/onboarding-forms/candidates/${id}/convert-to-employee`,
     DELETE: (id) => `/api/onboarding-forms/candidates/${id}`,
   },
 

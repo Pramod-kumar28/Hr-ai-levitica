@@ -4,6 +4,8 @@ import { Routes, Route, Navigate } from 'react-router-dom';
 import Signup from './modules/auth/Signup';
 import Login from './modules/auth/Login';
 import ForgotPassword from './modules/auth/ForgotPassword';
+import ChangePassword from './modules/auth/ChangePassword';
+import CompleteProfile from './modules/auth/CompleteProfile';
 import PricingPage from './modules/auth/PricingPage';
 import ProtectedRoute from './modules/auth/ProtectedRoute';
 import SuperAdminPanel from './modules/super-admin/SuperAdminPanel';
@@ -168,6 +170,8 @@ const App = () => {
      <Route path='/' element={<HomePage />}/>
       <Route path='/signup' element={<Signup />} />
       <Route path='/login' element={<Login />} />
+      <Route path='/change-password' element={<ProtectedRoute><ChangePassword /></ProtectedRoute>} />
+      <Route path='/employee/complete-profile' element={<ProtectedRoute><CompleteProfile /></ProtectedRoute>} />
       <Route path='/ForgotPassword' element={<ForgotPassword />} />
       <Route path='/pricing' element={<PricingPage />} />
       <Route path='/hrAutomation' element={<HRAutomation />}/>

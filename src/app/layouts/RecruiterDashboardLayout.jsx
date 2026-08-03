@@ -2,6 +2,7 @@ import { useEffect, useState, useRef } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import { HiOutlineRocketLaunch, HiOutlineFolderOpen } from 'react-icons/hi2';
 import DashboardLayoutBase from "../../shared/components/DashboardLayoutBase";
+import BranchSelector from "../../shared/components/BranchSelector";
 import { getUserRole } from "../../shared/utils/auth";
 import {
   HiOutlineHome,
@@ -397,6 +398,7 @@ const RecruiterDashboardLayout = ({ children, internalNav = false, activeTab, on
   // Which sidebar sections each role is allowed to see.
   // 'dashboard' is always included for every role.
   const ROLE_SECTIONS = {
+    employee: ['dashboard'],
     recruiter: ['dashboard', 'recruitment', 'quick-actions'],
     hr_admin: ['dashboard', 'hr'],
     admin: ['dashboard', 'recruitment', 'crm', 'hr', 'productivity', 'company-settings', 'quick-actions'],
@@ -409,6 +411,7 @@ const RecruiterDashboardLayout = ({ children, internalNav = false, activeTab, on
   const allowedSections = ROLE_SECTIONS[userRole] || ROLE_SECTIONS.recruiter;
 
   const PANEL_LABELS = {
+    employee: { title: 'Employee Portal', subtitle: 'My Workspace' },
     recruiter: { title: 'Recruiter Panel', subtitle: 'Talent & Hiring' },
     hr_admin: { title: 'HR Admin Panel', subtitle: 'HR Management System' },
     admin: { title: 'Admin Panel', subtitle: 'Branch Administration' },
@@ -530,7 +533,7 @@ const RecruiterDashboardLayout = ({ children, internalNav = false, activeTab, on
       logoLink="/dashboard"
       panelTitle={panelLabels.title}
       panelSubtitle={panelLabels.subtitle}
-      topbarLeftContent={null}
+      topbarLeftContent={<BranchSelector />}
       topbarRightContent={topbarRightContent}
       activeTab={internalNav ? activeTab : null}
       onTabChange={internalNav ? onTabChange : null}

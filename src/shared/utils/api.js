@@ -115,8 +115,148 @@ export const authAPI = {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ token, new_password: newPassword })
+    }),
+
+  // Authenticated self-service password change (used for the forced
+  // change after "Convert to Employee" issues a temporary password, and
+  // for any voluntary password change afterwards).
+  changePassword: (currentPassword, newPassword) =>
+    apiCall('/api/auth/change-password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ current_password: currentPassword, new_password: newPassword })
     })
 };
+
+// ==========================================
+// EMPLOYEE SELF-SERVICE APIs
+// Backend: routers/Employee_Management/employee_self_service.py, mounted at
+// /api/employees/self-service/{employee_id}/... . The backend's
+// verify_self_or_hr dependency forces the 'employee' role to only ever
+// pass their OWN employee_id (HR roles can pass any id) — so
+// getMyEmployeeId() below is not itself a security boundary, just what
+// lets an employee's own UI build the right URL.
+// ==========================================
+const getMyEmployeeId = async () => {
+  const me = await authAPI.getCurrentUser();
+  if (!me?.employee_id) {
+    throw new Error("This login isn't linked to an Employee record.");
+  }
+  return me.employee_id;
+};
+
+export const employeeSelfServiceAPI = {
+  getDashboard: async () => apiCall(`/api/employees/self-service/${await getMyEmployeeId()}/dashboard`),
+  getProfile: async () => apiCall(`/api/employees/self-service/${await getMyEmployeeId()}/profile`),
+  updateProfile: async (data) => {
+    const q = new URLSearchParams();
+    if (data.mobile_number) q.append('mobile_number', data.mobile_number);
+    if (data.official_email) q.append('official_email', data.official_email);
+    return apiCall(`/api/employees/self-service/${await getMyEmployeeId()}/profile?${q.toString()}`, { method: 'PATCH' });
+  },
+
+  getAttendance: async (year, month) => {
+    const q = new URLSearchParams();
+    if (year) q.append('year', year);
+    if (month) q.append('month', month);
+    const qs = q.toString();
+    return apiCall(`/api/employees/self-service/${await getMyEmployeeId()}/attendance${qs ? `?${qs}` : ''}`);
+  },
+
+  getLeaves: async (params = {}) => {
+    const q = new URLSearchParams();
+    if (params.status) q.append('status', params.status);
+    if (params.year) q.append('year', params.year);
+    const qs = q.toString();
+    return apiCall(`/api/employees/self-service/${await getMyEmployeeId()}/leaves${qs ? `?${qs}` : ''}`);
+  },
+  // { leave_type, start_date, end_date, reason? }
+  applyLeave: async (data) => {
+    const q = new URLSearchParams({ leave_type: data.leave_type, start_date: data.start_date, end_date: data.end_date });
+    if (data.reason) q.append('reason', data.reason);
+    return apiCall(`/api/employees/self-service/${await getMyEmployeeId()}/leaves?${q.toString()}`, { method: 'POST' });
+  },
+
+  getPayslips: async (year) => apiCall(`/api/employees/self-service/${await getMyEmployeeId()}/payslips${year ? `?year=${year}` : ''}`),
+  getPayslipDetail: async (slipId) => apiCall(`/api/employees/self-service/${await getMyEmployeeId()}/payslips/${slipId}`),
+
+  getDocuments: async () => apiCall(`/api/employees/self-service/${await getMyEmployeeId()}/documents`),
+
+  getLoans: async () => apiCall(`/api/employees/self-service/${await getMyEmployeeId()}/loans`),
+  applyLoan: async (data) => {
+    const q = new URLSearchParams({ loan_type: data.loan_type, amount: data.amount });
+    if (data.reason) q.append('reason', data.reason);
+    return apiCall(`/api/employees/self-service/${await getMyEmployeeId()}/loans?${q.toString()}`, { method: 'POST' });
+  },
+
+  getReimbursements: async () => apiCall(`/api/employees/self-service/${await getMyEmployeeId()}/reimbursements`),
+  submitReimbursement: async (data) => {
+    const q = new URLSearchParams({ claim_type: data.claim_type, amount: data.amount, claim_date: data.claim_date });
+    if (data.description) q.append('description', data.description);
+    return apiCall(`/api/employees/self-service/${await getMyEmployeeId()}/reimbursements?${q.toString()}`, { method: 'POST' });
+  },
+
+  getTickets: async (status) => apiCall(`/api/employees/self-service/${await getMyEmployeeId()}/helpdesk${status ? `?status=${status}` : ''}`),
+  raiseTicket: async (data) => {
+    const q = new URLSearchParams({ category: data.category, subject: data.subject, description: data.description });
+    if (data.priority) q.append('priority', data.priority);
+    return apiCall(`/api/employees/self-service/${await getMyEmployeeId()}/helpdesk?${q.toString()}`, { method: 'POST' });
+  },
+
+  getTransfers: async () => apiCall(`/api/employees/self-service/${await getMyEmployeeId()}/transfers`),
+  getLifecycle: async () => apiCall(`/api/employees/self-service/${await getMyEmployeeId()}/lifecycle`),
+  getOnboardingTasks: async () => apiCall(`/api/employees/self-service/${await getMyEmployeeId()}/onboarding-tasks`),
+
+  // ---- Profile completion step (bank details / emergency contact / documents) ----
+  getProfileCompletionStatus: async () => apiCall(`/api/employees/self-service/${await getMyEmployeeId()}/profile-completion-status`),
+
+  getBankDetails: async () => apiCall(`/api/employees/self-service/${await getMyEmployeeId()}/bank-details`),
+  // { account_holder_name, account_number, ifsc_code, bank_name, branch_name? }
+  saveBankDetails: async (data) => {
+    const form = new FormData();
+    Object.entries(data).forEach(([k, v]) => { if (v !== undefined && v !== null) form.append(k, v); });
+    return apiCall(`/api/employees/self-service/${await getMyEmployeeId()}/bank-details`, { method: 'PUT', body: form });
+  },
+
+  getEmergencyContact: async () => apiCall(`/api/employees/self-service/${await getMyEmployeeId()}/emergency-contact`),
+  // { contact_name, relationship, phone_number, alternate_phone_number?, address? }
+  saveEmergencyContact: async (data) => {
+    const form = new FormData();
+    Object.entries(data).forEach(([k, v]) => { if (v !== undefined && v !== null) form.append(k, v); });
+    return apiCall(`/api/employees/self-service/${await getMyEmployeeId()}/emergency-contact`, { method: 'PUT', body: form });
+  },
+
+  // (documentType, documentName, category, file)
+  uploadDocument: async (documentType, documentName, category, file) => {
+    const form = new FormData();
+    form.append('document_type', documentType);
+    form.append('document_name', documentName);
+    form.append('category', category || 'Other');
+    form.append('file', file);
+    return apiCall(`/api/employees/self-service/${await getMyEmployeeId()}/documents/upload`, { method: 'POST', body: form });
+  },
+
+  checkIn: async () => apiCall(`/api/employees/self-service/${await getMyEmployeeId()}/attendance/check-in`, { method: 'POST' }),
+  checkOut: async () => apiCall(`/api/employees/self-service/${await getMyEmployeeId()}/attendance/check-out`, { method: 'POST' }),
+};
+
+// ==========================================
+// ANNOUNCEMENTS API
+// Backend: routers/Company_Settings/announcements.py, mounted at
+// /api/announcements. Viewable by every authenticated role (including
+// employee); creating/deleting is HR-side only (enforced server-side).
+// ==========================================
+export const announcementsAPI = {
+  list: () => apiCall('/api/announcements/'),
+  create: (title, body) =>
+    apiCall('/api/announcements/', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ title, body }),
+    }),
+  remove: (id) => apiCall(`/api/announcements/${id}`, { method: 'DELETE' }),
+};
+
 
 // ==========================================
 // JOB APIs
@@ -2757,6 +2897,8 @@ export const reportsPayrollAPI = {
 const apiServices = {
   authAPI,
   locationAPI,
+  employeeSelfServiceAPI,
+  announcementsAPI,
   jobAPI,
   assetsAPI,
   candidateAPI,
